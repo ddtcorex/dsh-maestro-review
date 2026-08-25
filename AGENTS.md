@@ -21,9 +21,10 @@ Part of the Maestro Harness suite. Host half + client half (review settings/slot
 - `src/settings-rpc.ts` — settings RPC (row `maestro-review-settings-rpc`).
 - `src/config-store.ts` / `src/pin-store.ts` / `src/secure-compare.ts` — config + PIN auth (constant-time).
 - `src/govard-tool.ts` / `src/workspace-tool.ts` — govard + workspace tooling.
-- `src/telegram.ts` / `src/telegram-notifier.ts` / `src/skills-tool.ts` — Telegram + skills helpers.
+- `src/notify.ts` / `src/skills-tool.ts` — notifier texts + contract slice (delivery via the optional
+  `maestroNotifier` service from `@ddtcorex/dsh-maestro-notifier`) and skills helpers.
 - `src/events.ts` — typed event contract; `src/index.ts` — host `apply()`.
-- `tests/{orchestrator,provider}.test.ts` — vitest suites.
+- `tests/{orchestrator,provider,notify-texts}.test.ts` — vitest suites.
 
 ## Development
 

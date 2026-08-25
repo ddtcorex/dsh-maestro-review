@@ -5,7 +5,7 @@ import { existsSync, statSync } from 'node:fs'
 import { loadUserConfig, saveUserConfig, type MaestroUserConfig } from './config-store.js'
 import { listReviews } from './review-history.js'
 import { readPin, rotatePin, readLanPin, rotateLanPin } from './pin-store.js'
-import { sendTelegramPinRotationNotification } from './telegram-notifier.js'
+import { pinRotationText, type NotifierLike } from './notify.js'
 
 export const name = 'maestro-settings-rpc'
 export const inject = ['connection', 'maestroTunnel']
@@ -171,13 +171,18 @@ export function apply(ctx: Context): void {
     }
     if (endpoint === MAESTRO_ENDPOINTS.rotatePin) {
       const pin = await rotatePin()
-      // Delivery is deliberately detached: a slow/unavailable Telegram API cannot make the
+      // Delivery is deliberately detached: a slow/unavailable notifier cannot make the
       // explicit security operation appear to fail or hold the Settings UI open.
-      void loadUserConfig().then((config) => sendTelegramPinRotationNotification({
-        botToken: config.telegramBotToken,
-        chatId: config.telegramChatId,
-        pin,
-      })).then((delivery) => {
+      void loadUserConfig().then((config) => {
+        const notifier = ctx.get?.('maestroNotifier') as NotifierLike | undefined
+        if (notifier === undefined) return undefined
+        return notifier.send(
+          'telegram',
+          { botToken: config.telegramBotToken, chatId: config.telegramChatId },
+          { text: pinRotationText(pin) },
+        )
+      }).then((delivery) => {
+        if (!delivery) return
         if (delivery.sent) {
           ctx.logger?.info?.('maestro-telegram: PIN rotation notification delivered')
         } else if (delivery.reason === 'request-failed') {
