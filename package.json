@@ -1,0 +1,48 @@
+{
+  "name": "@ddtcorex/dsh-maestro-review",
+  "version": "0.1.0",
+  "description": "Maestro Review — pluggable ReviewProvider (GitLab/GitHub) + orchestrator for automated MR review",
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": "./lib/index.js",
+    "./lib/*": "./lib/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "presets",
+    "client"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "build:client": "echo \"no client build\"",
+    "test": "vitest run",
+    "verify": "tsc --noEmit"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-slots"
+      ]
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.0.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "typescript": "^5.8.0",
+    "vitest": "^2.0.0",
+    "@types/node": "^22.0.0"
+  }
+}

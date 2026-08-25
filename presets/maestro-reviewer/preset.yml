@@ -1,0 +1,2 @@
+name: Maestro Reviewer
+description: Automated AI Tech Lead that reviews a GitLab merge request's diff against project coding standards. Invoked programmatically by dsh-maestro-review's orchestrator — not meant for manual selection.
