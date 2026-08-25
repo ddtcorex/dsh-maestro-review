@@ -23,7 +23,7 @@ import type { ReviewRequest } from './events.js'
 import { loadUserConfig, type MaestroUserConfig, type ReviewModelSelection } from './config-store.js'
 import { hasCompletedReview, pruneHistory, recordReviewFinish, recordReviewStart } from './review-history.js'
 import { createReviewSignals } from './review-signals.js'
-import { sendTelegramReviewNotification } from './telegram-notifier.js'
+import { reviewDigestText, type NotifierLike } from './notify.js'
 import { loadedReviewProfile, type ReviewSkillProfile } from './skills-tool.js'
 import type { ReviewProvider } from './providers/interface.js'
 import { gitlabProvider } from './providers/gitlab.js'
@@ -647,14 +647,13 @@ export function apply(ctx: Context, config: Config): void {
       // Opt-in Telegram digest; a delivery failure is logged and dropped.
       const notifyTelegram = (status: 'completed' | 'failed', summary?: string): void => {
         if (userConfig.telegramReviewNotifications !== true) return
-        void sendTelegramReviewNotification({
-          botToken: userConfig.telegramBotToken,
-          chatId: userConfig.telegramChatId,
-          projectPath: payload.projectPath,
-          mrIid: payload.mrIid,
-          status,
-          summary,
-        }).then((result) => {
+        const notifier = ctx.get?.('maestroNotifier') as NotifierLike | undefined
+        if (notifier === undefined) return
+        void notifier.send(
+          'telegram',
+          { botToken: userConfig.telegramBotToken, chatId: userConfig.telegramChatId },
+          { text: reviewDigestText({ projectPath: payload.projectPath, mrIid: payload.mrIid, status, summary }) },
+        ).then((result) => {
           if (!result.sent && result.reason === 'request-failed') {
             console.error(`maestro-orchestrator: Telegram review notification for MR !${String(payload.mrIid)} failed to deliver`)
           }
