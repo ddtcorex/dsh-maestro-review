@@ -12,6 +12,7 @@
   },
   "files": [
     "lib",
+    "src",
     "presets",
     "client"
   ],
@@ -26,7 +27,7 @@
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.0.0",
-    "@ddtcorex/dsh-maestro-config-lib": "link:../dsh-maestro-config-lib"
+    "@ddtcorex/dsh-maestro-config-lib": "workspace:^0.1.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
