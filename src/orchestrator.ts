@@ -23,6 +23,7 @@ import * as SearchTool from './search-tool.js'
 import * as HyvaThemeInspectTool from './hyva-theme-inspect-tool.js'
 import * as HyvaCspScanTool from './hyva-csp-scan-tool.js'
 import * as LayoutXmlTool from './layout-xml-tool.js'
+import * as ModuleCheckTool from './module-check-tool.js'
 import * as ReviewToolPolicy from './tool-policy.js'
 import type { ReviewFinding } from './review-findings-tool.js'
 import type { ReviewRequest } from './events.js'
@@ -528,6 +529,7 @@ export function apply(ctx: Context, config: Config): void {
             await agentCtx.plugin(HyvaThemeInspectTool, { rootPath: worktreePath })
             await agentCtx.plugin(HyvaCspScanTool, { rootPath: worktreePath })
             await agentCtx.plugin(LayoutXmlTool, { rootPath: worktreePath })
+            await agentCtx.plugin(ModuleCheckTool, { rootPath: worktreePath })
           }
         },
       })
