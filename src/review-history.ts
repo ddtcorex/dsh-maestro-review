@@ -25,28 +25,8 @@ export function historyPath(dshHome?: string): string {
   return join(home, 'dsh-maestro-review', 'reviews.json')
 }
 
-function legacyHistoryPath(dshHome?: string): string {
-  const home = dshHome ?? process.env.DSH_HOME ?? join(homedir(), '.dsh')
-  return join(home, 'dsh-maestro-harness', 'reviews.json')
-}
-
-async function maybeMigrateLegacyHistory(dshHome?: string): Promise<void> {
-  const newPath = historyPath(dshHome)
-  const legacyPath = legacyHistoryPath(dshHome)
-  try {
-    await readFile(newPath, 'utf-8')
-    return
-  } catch {}
-  try {
-    const data = await readFile(legacyPath, 'utf-8')
-    await mkdir(dirname(newPath), { recursive: true, mode: 0o700 })
-    await writeFile(newPath, data, { encoding: 'utf-8', mode: 0o600 })
-    await chmod(newPath, 0o600)
-  } catch {}
-}
 
 async function readAll(dshHome?: string): Promise<ReviewHistoryEntry[]> {
-  await maybeMigrateLegacyHistory(dshHome)
   try {
     const parsed: unknown = JSON.parse(await readFile(historyPath(dshHome), 'utf-8'))
     if (!Array.isArray(parsed)) return []
