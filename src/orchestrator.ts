@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { promisify } from 'node:util'
 import { join } from 'node:path'
+import { normalize as posixNormalize } from 'node:path/posix'
 import { homedir, tmpdir } from 'node:os'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -247,6 +248,15 @@ async function loadLatestDiffSnapshot(fetcher: typeof fetch, apiBase: string, he
 }
 
 /**
+ * Collapse `.`/`..`/duplicate slashes so worktree-relative finding paths
+ * (which legitimately contain `../` segments when a template references a
+ * sibling theme directory) compare equal to GitLab's canonical diff paths.
+ */
+function normalizedDiffPath(path: string): string {
+  return posixNormalize(path)
+}
+
+/**
  * Publish agent findings from the orchestrator's own context. Agent tools are
  * mounted inside a setup child fiber and are not guaranteed to remain
  * executable through `handle.agent.ctx` after the agent turn ends.
@@ -266,7 +276,9 @@ export async function postReviewFindings(findings: ReviewFinding[], config: Gitl
       if (finding.path === undefined || finding.line === undefined) throw new Error('new finding missing path or line')
       config.snapshot ??= loadLatestDiffSnapshot(fetcher, apiBase, headers)
       const snapshot = await config.snapshot
-      const change = snapshot.changes.find(candidate => candidate.new_path === finding.path) ?? snapshot.changes.find(candidate => candidate.old_path === finding.path)
+      const requestedPath = normalizedDiffPath(finding.path)
+      const change = snapshot.changes.find(candidate => normalizedDiffPath(candidate.new_path) === requestedPath)
+        ?? snapshot.changes.find(candidate => normalizedDiffPath(candidate.old_path) === requestedPath)
       if (change === undefined) throw new Error(`cannot post inline finding at ${finding.path}:${finding.line}: file is not in the current MR diff`)
       if (change.collapsed === true || change.too_large === true || change.diff === '') {
         throw new Error(`cannot post inline finding at ${finding.path}:${finding.line}: GitLab did not return this file's complete diff`)
