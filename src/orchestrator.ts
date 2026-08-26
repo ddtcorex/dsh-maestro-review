@@ -19,6 +19,7 @@ import type {} from '@deepseek-ai/dsh-session-title'
 import * as GovardTool from './govard-tool.js'
 import * as GitlabClient from './gitlab-client.js'
 import * as ReviewFindingsTool from './review-findings-tool.js'
+import * as SearchTool from './search-tool.js'
 import type { ReviewFinding } from './review-findings-tool.js'
 import type { ReviewRequest } from './events.js'
 import { loadUserConfig, type MaestroUserConfig, type ReviewModelSelection } from './config-store.js'
@@ -515,6 +516,10 @@ export function apply(ctx: Context, config: Config): void {
             botUsername: effective.botUsername,
           })
           await agentCtx.plugin(ReviewFindingsTool, { onReport: (findings) => { capturedFindings = findings } })
+          // Diff-only runs have no worktree; nothing to search there.
+          if (worktreePath !== undefined) {
+            await agentCtx.plugin(SearchTool, { rootPath: worktreePath })
+          }
         },
       })
     } catch (err) {
