@@ -16,6 +16,8 @@ export interface ReviewHistoryEntry {
   finishedAt?: number
   summary?: string
   error?: string
+  /** MR head_sha at review start — baseline for incremental re-reviews (H6). */
+  headSha?: string
 }
 
 const HISTORY_CAP = 100
@@ -74,6 +76,12 @@ export async function listReviews(limit = 20, dshHome?: string): Promise<ReviewH
 export async function hasCompletedReview(projectId: number, mrIid: number, dshHome?: string): Promise<boolean> {
   return (await readAll(dshHome)).some(entry =>
     entry.projectId === projectId && entry.mrIid === mrIid && entry.status === 'completed')
+}
+
+/** Newest completed entry for this MR — carries headSha for H6 incrementality. */
+export async function lastCompletedReview(projectId: number, mrIid: number, dshHome?: string): Promise<ReviewHistoryEntry | undefined> {
+  return (await readAll(dshHome)).find(entry =>
+    entry.projectId === projectId && entry.mrIid === mrIid && entry.status === 'completed' && typeof entry.headSha === 'string')
 }
 
 /**
