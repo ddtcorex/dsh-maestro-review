@@ -42,5 +42,10 @@
     "@deepseek-ai/dsh-session-title": "0.1.0-rc.8",
     "@deepseek-ai/dsh-subagent": "0.1.0-rc.8",
     "@deepseek-ai/dsh-tools": "0.1.0-rc.8"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
   }
 }
