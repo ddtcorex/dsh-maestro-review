@@ -2,3 +2,5 @@ allowBuilds:
   esbuild: true
 packages:
   - '../dsh-maestro-config-lib'
+overrides:
+  '@deepseek-ai/dsh-invariants': 0.1.1-rc.2
