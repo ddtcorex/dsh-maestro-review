@@ -26,6 +26,7 @@ import * as LayoutXmlTool from './layout-xml-tool.js'
 import * as ModuleCheckTool from './module-check-tool.js'
 import * as PhtmlEscapeScanTool from './phtml-escape-scan-tool.js'
 import * as ScopeSplitTool from './scope-split-tool.js'
+import * as GovardAuditLintTool from './govard-audit-lint-tool.js'
 import * as ReviewToolPolicy from './tool-policy.js'
 import type { ReviewFinding } from './review-findings-tool.js'
 import type { ReviewRequest } from './events.js'
@@ -534,6 +535,7 @@ export function apply(ctx: Context, config: Config): void {
             await agentCtx.plugin(ModuleCheckTool, { rootPath: worktreePath })
             await agentCtx.plugin(PhtmlEscapeScanTool, { rootPath: worktreePath })
             await agentCtx.plugin(ScopeSplitTool, { rootPath: worktreePath })
+            await agentCtx.plugin(GovardAuditLintTool, { rootPath: worktreePath })
           }
         },
       })
