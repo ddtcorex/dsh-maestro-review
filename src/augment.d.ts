@@ -25,6 +25,10 @@ declare module '@deepseek-ai/cordis' {
       proxyStatus(): any
       reloadConfig(): Promise<void>
       initialReady(): Promise<void>
+      getPin(): Promise<string>
+      rotatePin(): Promise<string>
+      getLanPin(): Promise<string>
+      rotateLanPin(): Promise<string>
     }
     logger?: {
       info?: (...args: any[]) => void
