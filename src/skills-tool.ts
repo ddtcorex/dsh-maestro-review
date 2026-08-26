@@ -16,6 +16,10 @@ export const REVIEW_PROFILE_SKILLS: Record<ReviewSkillProfile, readonly string[]
     'govard-toolbox',
     'govard-magento',
     'magento2-dev-core',
+    // Frontend passes: without these a Hyvä/Tailwind MR is reviewed on model
+    // priors alone (utility-class claims were unverifiable and wrong in practice).
+    'magento2-frontend-dev',
+    'magento2-hyva-dev',
     'magento2-code-review',
     'magento2-linter',
     'magento2-security-scan',
@@ -25,7 +29,7 @@ export const REVIEW_PROFILE_SKILLS: Record<ReviewSkillProfile, readonly string[]
   generic: [],
 }
 
-export const MAESTRO_SKILLS_INSTALL_COMMAND = 'curl -fsSL https://raw.githubusercontent.com/ddtcorex/maestro-skills/master/install.sh | bash -s -- --scope personal --target dsh --skills govard-toolbox,govard-magento,magento2-dev-core,magento2-code-review,magento2-linter,magento2-security-scan,magento2-performance-audit -y'
+export const MAESTRO_SKILLS_INSTALL_COMMAND = 'curl -fsSL https://raw.githubusercontent.com/ddtcorex/maestro-skills/master/install.sh | bash -s -- --scope personal --target dsh --skills govard-toolbox,govard-magento,magento2-dev-core,magento2-frontend-dev,magento2-hyva-dev,magento2-code-review,magento2-linter,magento2-security-scan,magento2-performance-audit -y'
 
 // This is deliberately process-local and keyed by the reviewer Agent object,
 // which every Cordis child context inherits. Preset mounting inserts child
