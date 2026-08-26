@@ -4,7 +4,6 @@ import type { RpcErrorDetailsMap, RpcResult } from '@deepseek-ai/dsh-host-apipro
 import { existsSync, statSync } from 'node:fs'
 import { loadUserConfig, saveUserConfig, type MaestroUserConfig } from './config-store.js'
 import { listReviews } from './review-history.js'
-import { readPin, rotatePin, readLanPin, rotateLanPin } from './pin-store.js'
 import { pinRotationText, type NotifierLike } from './notify.js'
 
 export const name = 'maestro-settings-rpc'
@@ -165,10 +164,10 @@ export function apply(ctx: Context): void {
       return ok(ctx.maestroTunnel.proxyStatus())
     }
     if (endpoint === MAESTRO_ENDPOINTS.getPin) {
-      return ok({ pin: await readPin() })
+      return ok({ pin: await ctx.maestroTunnel.getPin() })
     }
     if (endpoint === MAESTRO_ENDPOINTS.rotatePin) {
-      const pin = await rotatePin()
+      const pin = await ctx.maestroTunnel.rotatePin()
       // Delivery is deliberately detached: a slow/unavailable notifier cannot make the
       // explicit security operation appear to fail or hold the Settings UI open.
       void loadUserConfig().then((config) => {
@@ -196,7 +195,7 @@ export function apply(ctx: Context): void {
       // Disabled by default; the LAN PIN is only read (and generated) once the
       // user opts in, so an untouched install keeps LAN access open.
       if (config.lanPinEnabled !== true) return ok({ enabled: false })
-      return ok({ enabled: true, pin: await readLanPin() })
+      return ok({ enabled: true, pin: await ctx.maestroTunnel.getLanPin() })
     }
     if (endpoint === MAESTRO_ENDPOINTS.lanPinSetEnabled) {
       const enabled = (payload as { enabled?: unknown } | undefined)?.enabled === true
@@ -207,7 +206,7 @@ export function apply(ctx: Context): void {
       return ok({ enabled })
     }
     if (endpoint === MAESTRO_ENDPOINTS.lanPinRotate) {
-      return ok({ pin: await rotateLanPin() })
+      return ok({ pin: await ctx.maestroTunnel.rotateLanPin() })
     }
     if (endpoint === MAESTRO_ENDPOINTS.reviewsList) {
       return ok(await listReviews(20))
