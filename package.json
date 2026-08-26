@@ -17,21 +17,8 @@
   ],
   "scripts": {
     "build": "tsc",
-    "build:client": "echo \"no client build\"",
     "test": "vitest run",
     "verify": "tsc --noEmit"
-  },
-  "dsh": {
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    },
-    "client": {
-      "platform": "web",
-      "inject": [
-        "@deepseek-ai/dsh-client-connection",
-        "@deepseek-ai/dsh-client-ui-slots"
-      ]
-    }
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
