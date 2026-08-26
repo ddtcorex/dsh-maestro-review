@@ -20,6 +20,7 @@ import * as GovardTool from './govard-tool.js'
 import * as GitlabClient from './gitlab-client.js'
 import * as ReviewFindingsTool from './review-findings-tool.js'
 import * as SearchTool from './search-tool.js'
+import * as HyvaThemeInspectTool from './hyva-theme-inspect-tool.js'
 import * as ReviewToolPolicy from './tool-policy.js'
 import type { ReviewFinding } from './review-findings-tool.js'
 import type { ReviewRequest } from './events.js'
@@ -522,6 +523,7 @@ export function apply(ctx: Context, config: Config): void {
           // Diff-only runs have no worktree; nothing to search there.
           if (worktreePath !== undefined) {
             await agentCtx.plugin(SearchTool, { rootPath: worktreePath })
+            await agentCtx.plugin(HyvaThemeInspectTool, { rootPath: worktreePath })
           }
         },
       })
