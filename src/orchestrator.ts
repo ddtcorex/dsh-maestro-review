@@ -24,7 +24,8 @@ import * as ReviewToolPolicy from './tool-policy.js'
 import type { ReviewFinding } from './review-findings-tool.js'
 import type { ReviewRequest } from './events.js'
 import { loadUserConfig, type MaestroUserConfig, type ReviewModelSelection } from './config-store.js'
-import { hasCompletedReview, pruneHistory, recordReviewFinish, recordReviewStart } from './review-history.js'
+import { hasCompletedReview, lastCompletedReview, pruneHistory, recordReviewFinish, recordReviewStart } from './review-history.js'
+import { buildIncrementalBlock, fetchCompare, fetchMrDetailHeadSha } from './incremental.js'
 import { createReviewSignals } from './review-signals.js'
 import { reviewDigestText, type NotifierLike } from './notify.js'
 import { loadedReviewProfile, type ReviewSkillProfile } from './skills-tool.js'
@@ -495,7 +496,7 @@ export function apply(ctx: Context, config: Config): void {
   // Resolved per review run from Settings so an agentTimeoutMs change takes
   // effect without a plugin restart.
   let effectiveAgentTimeoutMs = config.agentTimeoutMs
-  async function runReviewer(worktreePath: string | undefined, payload: ReviewRequest, effective: { gitlabBaseUrl: string; gitlabToken: string; botUsername: string }, reviewProfile?: ReviewSkillProfile, modelSelection?: ModelSelection): Promise<ReviewOutcome> {
+  async function runReviewer(worktreePath: string | undefined, payload: ReviewRequest, effective: { gitlabBaseUrl: string; gitlabToken: string; botUsername: string }, reviewProfile?: ReviewSkillProfile, modelSelection?: ModelSelection, incrementalBlock?: string): Promise<ReviewOutcome> {
     let capturedFindings: ReviewFinding[] = []
     let handle: AgentHandle
     let reviewerContext: Context | undefined
@@ -532,9 +533,10 @@ export function apply(ctx: Context, config: Config): void {
       const profileInstruction = reviewProfile === undefined
         ? 'This is a diff-only review with no local checkout or Magento environment. Do not claim that tests, static analysis, or Magento runtime validation ran. '
         : `Call maestro_load_review_profile with {"profile":"${reviewProfile}"} before examining code. `
-      const scopePrompt = payload.scope.kind === 'discussion'
+      let scopePrompt = payload.scope.kind === 'discussion'
         ? `${profileInstruction}Review only the requested inline discussion ${payload.scope.discussionId} at ${payload.scope.path}:${payload.scope.line}. Do not review unrelated files or start a broad audit. Call gitlab_get_mr_diff, then call report_review_findings exactly once when done.`
         : `${profileInstruction}Review this merge request (${payload.mode} mode). Call gitlab_list_own_review_threads and gitlab_get_mr_diff first, then call report_review_findings exactly once when done.`
+      if (incrementalBlock !== undefined) scopePrompt = `${incrementalBlock}\n\n${scopePrompt}`
       handle.agent.followup(createUserMessage({
         content: [{ type: 'text', text: scopePrompt }],
         source: { kind: 'user' },
@@ -648,7 +650,10 @@ export function apply(ctx: Context, config: Config): void {
         console.error(`maestro-orchestrator: MR !${String(payload.mrIid)} for project ${payload.projectPath} has no GitLab token — set one in Maestro Settings or MAESTRO_GITLAB_TOKEN`)
         return
       }
+      const resolved = { ...effective, gitlabToken }
       const historyId = `${payload.projectId}-${payload.mrIid}-${Date.now()}`
+      const currentHeadSha = await fetchMrDetailHeadSha(resolved.gitlabBaseUrl, gitlabToken, payload.projectId, payload.mrIid)
+        .catch(() => undefined) as string | undefined
       await recordReviewStart({
         id: historyId,
         projectId: payload.projectId,
@@ -658,8 +663,19 @@ export function apply(ctx: Context, config: Config): void {
         scope: payload.scope.kind,
         trigger: payload.trigger,
         startedAt: Date.now(),
+        headSha: currentHeadSha,
       })
-      const resolved = { ...effective, gitlabToken }
+      // H6 incremental context: what changed since the last completed review on this MR.
+      let incrementalBlock: string | undefined
+      try {
+        const prior = await lastCompletedReview(payload.projectId, payload.mrIid)
+        if (prior?.headSha !== undefined && currentHeadSha !== undefined && prior.headSha !== currentHeadSha) {
+          const compare = await fetchCompare(resolved.gitlabBaseUrl, gitlabToken, payload.projectId, prior.headSha, currentHeadSha)
+          incrementalBlock = buildIncrementalBlock(compare, prior.headSha, currentHeadSha)
+        }
+      } catch {
+        // Optional optimization only — never fail the review for it.
+      }
       const fallbackSelection: ModelSelection = (ctx.get?.('agentDefaultModel') as { currentSelection(): ModelSelection } | undefined)?.currentSelection()
         ?? (ctx as unknown as { agentDefaultModel?: { currentSelection(): ModelSelection } }).agentDefaultModel?.currentSelection()
         ?? { provider: 'fallback', model: 'fallback' }
@@ -720,7 +736,7 @@ export function apply(ctx: Context, config: Config): void {
             return
           }
           const diffBody = await runDiffOnlyReview(payload, {
-            runReviewer: (p) => runReviewer(undefined, p, resolved, undefined, reviewModelSelection),
+            runReviewer: (p) => runReviewer(undefined, p, resolved, undefined, reviewModelSelection, incrementalBlock),
             postComment,
             replyToDiscussion,
             writeFailedReport,
@@ -734,7 +750,7 @@ export function apply(ctx: Context, config: Config): void {
           localRepoPath: mapping.localRepoPath,
           ensureWorktree,
           removeWorktree,
-          runReviewer: (worktreePath, p) => runReviewer(worktreePath, p, resolved, mapping.reviewProfile ?? 'magento2', reviewModelSelection),
+          runReviewer: (worktreePath, p) => runReviewer(worktreePath, p, resolved, mapping.reviewProfile ?? 'magento2', reviewModelSelection, incrementalBlock),
           runAuditor: (worktreePath, p) => runAuditor(worktreePath, p, resolved, reviewModelSelection),
           postComment,
           replyToDiscussion,
