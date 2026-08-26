@@ -20,6 +20,7 @@ import * as GovardTool from './govard-tool.js'
 import * as GitlabClient from './gitlab-client.js'
 import * as ReviewFindingsTool from './review-findings-tool.js'
 import * as SearchTool from './search-tool.js'
+import * as ReviewToolPolicy from './tool-policy.js'
 import type { ReviewFinding } from './review-findings-tool.js'
 import type { ReviewRequest } from './events.js'
 import { loadUserConfig, type MaestroUserConfig, type ReviewModelSelection } from './config-store.js'
@@ -507,6 +508,7 @@ export function apply(ctx: Context, config: Config): void {
         setup: async (agentCtx) => {
           reviewerContext = agentCtx
           installModelSelection(agentCtx, { current: agentOptions, assembled: undefined })
+          await agentCtx.plugin(ReviewToolPolicy)
           await mountAgentPreset(ctx.agentPresets, agentCtx, 'dsh-maestro-reviewer')
           await agentCtx.plugin(GitlabClient, {
             baseUrl: effective.gitlabBaseUrl,
@@ -588,6 +590,7 @@ export function apply(ctx: Context, config: Config): void {
         agentOptions,
         setup: async (agentCtx) => {
           installModelSelection(agentCtx, { current: agentOptions, assembled: undefined })
+          await agentCtx.plugin(ReviewToolPolicy)
           await mountAgentPreset(ctx.agentPresets, agentCtx, 'dsh-maestro-auditor')
           await agentCtx.plugin(GovardTool, { rootPath: worktreePath })
           await agentCtx.plugin(GitlabClient, {
