@@ -102,8 +102,6 @@ function validateSavePayload(payload: unknown): { ok: true; patch: Partial<Maest
 }
 
 export const MAESTRO_RPC_CHANNEL = '/dsh-maestro-review'
-// Legacy alias kept for one minor release for backward compat with installs that still call '/dsh-maestro-harness'
-export const LEGACY_MAESTRO_RPC_CHANNEL = '/dsh-maestro-harness'
 export const MAESTRO_ENDPOINTS = Object.freeze({
   status: 'maestro.status',
   getConfig: 'maestro.getConfig',
@@ -246,7 +244,6 @@ export function apply(ctx: Context): void {
     return fail(`Unknown endpoint: ${endpoint}`)
   }
   const disposeRpc = ctx.connection.rpc.handle(MAESTRO_RPC_CHANNEL, handler, { authority: 'loopback' })
-  const disposeLegacyRpc = ctx.connection.rpc.handle(LEGACY_MAESTRO_RPC_CHANNEL, handler, { authority: 'loopback' })
 
-  ctx.effect(() => () => { disposeRpc(); disposeLegacyRpc(); }, 'maestro-settings-rpc teardown')
+  ctx.effect(() => () => { disposeRpc(); }, 'maestro-settings-rpc teardown')
 }
