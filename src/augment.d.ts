@@ -1,3 +1,5 @@
+import type { ModelSelection } from '@deepseek-ai/dsh-agent'
+
 declare module '@deepseek-ai/dsh-host-webserver' {}
 declare module '@deepseek-ai/dsh-client-connection' {}
 declare module '@deepseek-ai/dsh-client-ui-slots' {}
@@ -33,5 +35,13 @@ declare module '@deepseek-ai/cordis' {
     agents: any
     sessions: any
     skills: any
+    /** DSH default-model service (injected by the host; structural shape only). */
+    agentDefaultModel: {
+      currentSelection(): ModelSelection
+    }
+    agentPresets: { mount(agentCtx: Context, id: string): Promise<unknown> | unknown }
+    sessionTitle: { rename(session: unknown, title: string): Promise<unknown> | unknown }
+    /** Current agent identity inside an agent-scoped context (WeakMap key). */
+    agent?: object
   }
 }
