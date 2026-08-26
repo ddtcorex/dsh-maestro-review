@@ -14,4 +14,4 @@ permissions:
 
 jobs:
   verify:
-    uses: ddtcorex/.github/.github/workflows/node-plugin.yml@main
+    uses: ddtcorex/.github/.github/workflows/node-plugin.yml@f02a7fb6d7a681716e0b2a883f48971e8f318813
