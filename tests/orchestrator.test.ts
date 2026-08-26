@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { postReviewFindings } from '../src/orchestrator.js'
 
 describe('orchestrator', () => {
   it('exports orchestrator with provider integration', async () => {
@@ -23,5 +24,41 @@ describe('orchestrator', () => {
     const { gitlabProvider } = await import('../src/providers/gitlab.js')
     const { githubProvider } = await import('../src/providers/github.stub.js')
     expect(gitlabProvider.id).not.toBe(githubProvider.id)
+  })
+})
+
+describe('postReviewFindings path matching', () => {
+  const diffRefs = { base_sha: 'b', start_sha: 's', head_sha: 'h' }
+  const CANONICAL = 'app/design/frontend/Vendor/theme/C/templates/x.phtml'
+  // Reviewer agents run in worktrees; findings legitimately contain `..` segments.
+  const WORKTREE_RELATIVE = 'app/design/frontend/Vendor/theme/B/../C/templates/x.phtml'
+  const DIFF = '@@ -1,2 +1,3 @@\n context\n+added\n context2'
+
+  function poster(changes: Array<{ old_path: string; new_path: string; diff: string }>, calls: unknown[]) {
+    return {
+      baseUrl: 'https://git.example', token: 't', projectId: 1, mrIid: 9,
+      fetcher: ((_url: string, init?: RequestInit) => {
+        calls.push(JSON.parse(String(init?.body)))
+        return Promise.resolve({ ok: true })
+      }) as typeof fetch,
+      snapshot: Promise.resolve({ diffRefs, changes }),
+    }
+  }
+
+  it('posts inline findings whose worktree-relative path contains .. segments', async () => {
+    const calls: unknown[] = []
+    await postReviewFindings(
+      [{ status: 'new', body: 'b', path: WORKTREE_RELATIVE, line: 2 }],
+      poster([{ old_path: CANONICAL, new_path: CANONICAL, diff: DIFF }], calls) as never,
+    )
+    expect(calls).toHaveLength(1)
+    expect((calls[0] as { position: { new_path: string } }).position.new_path).toBe(CANONICAL)
+  })
+
+  it('still rejects findings for files outside the MR diff', async () => {
+    await expect(postReviewFindings(
+      [{ status: 'new', body: 'b', path: 'app/code/Never/Mentioned.php', line: 1 }],
+      poster([] as never[], []) as never,
+    )).rejects.toThrow(/not in the current MR diff/)
   })
 })

@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { promisify } from 'node:util'
 import { join } from 'node:path'
+import { normalize as posixNormalize } from 'node:path/posix'
 import { homedir, tmpdir } from 'node:os'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -18,6 +19,8 @@ import type {} from '@deepseek-ai/dsh-session-title'
 import * as GovardTool from './govard-tool.js'
 import * as GitlabClient from './gitlab-client.js'
 import * as ReviewFindingsTool from './review-findings-tool.js'
+import * as SearchTool from './search-tool.js'
+import * as ReviewToolPolicy from './tool-policy.js'
 import type { ReviewFinding } from './review-findings-tool.js'
 import type { ReviewRequest } from './events.js'
 import { loadUserConfig, type MaestroUserConfig, type ReviewModelSelection } from './config-store.js'
@@ -247,6 +250,15 @@ async function loadLatestDiffSnapshot(fetcher: typeof fetch, apiBase: string, he
 }
 
 /**
+ * Collapse `.`/`..`/duplicate slashes so worktree-relative finding paths
+ * (which legitimately contain `../` segments when a template references a
+ * sibling theme directory) compare equal to GitLab's canonical diff paths.
+ */
+function normalizedDiffPath(path: string): string {
+  return posixNormalize(path)
+}
+
+/**
  * Publish agent findings from the orchestrator's own context. Agent tools are
  * mounted inside a setup child fiber and are not guaranteed to remain
  * executable through `handle.agent.ctx` after the agent turn ends.
@@ -266,7 +278,9 @@ export async function postReviewFindings(findings: ReviewFinding[], config: Gitl
       if (finding.path === undefined || finding.line === undefined) throw new Error('new finding missing path or line')
       config.snapshot ??= loadLatestDiffSnapshot(fetcher, apiBase, headers)
       const snapshot = await config.snapshot
-      const change = snapshot.changes.find(candidate => candidate.new_path === finding.path) ?? snapshot.changes.find(candidate => candidate.old_path === finding.path)
+      const requestedPath = normalizedDiffPath(finding.path)
+      const change = snapshot.changes.find(candidate => normalizedDiffPath(candidate.new_path) === requestedPath)
+        ?? snapshot.changes.find(candidate => normalizedDiffPath(candidate.old_path) === requestedPath)
       if (change === undefined) throw new Error(`cannot post inline finding at ${finding.path}:${finding.line}: file is not in the current MR diff`)
       if (change.collapsed === true || change.too_large === true || change.diff === '') {
         throw new Error(`cannot post inline finding at ${finding.path}:${finding.line}: GitLab did not return this file's complete diff`)
@@ -494,6 +508,7 @@ export function apply(ctx: Context, config: Config): void {
         setup: async (agentCtx) => {
           reviewerContext = agentCtx
           installModelSelection(agentCtx, { current: agentOptions, assembled: undefined })
+          await agentCtx.plugin(ReviewToolPolicy)
           await mountAgentPreset(ctx.agentPresets, agentCtx, 'dsh-maestro-reviewer')
           await agentCtx.plugin(GitlabClient, {
             baseUrl: effective.gitlabBaseUrl,
@@ -503,6 +518,10 @@ export function apply(ctx: Context, config: Config): void {
             botUsername: effective.botUsername,
           })
           await agentCtx.plugin(ReviewFindingsTool, { onReport: (findings) => { capturedFindings = findings } })
+          // Diff-only runs have no worktree; nothing to search there.
+          if (worktreePath !== undefined) {
+            await agentCtx.plugin(SearchTool, { rootPath: worktreePath })
+          }
         },
       })
     } catch (err) {
@@ -571,6 +590,7 @@ export function apply(ctx: Context, config: Config): void {
         agentOptions,
         setup: async (agentCtx) => {
           installModelSelection(agentCtx, { current: agentOptions, assembled: undefined })
+          await agentCtx.plugin(ReviewToolPolicy)
           await mountAgentPreset(ctx.agentPresets, agentCtx, 'dsh-maestro-auditor')
           await agentCtx.plugin(GovardTool, { rootPath: worktreePath })
           await agentCtx.plugin(GitlabClient, {
