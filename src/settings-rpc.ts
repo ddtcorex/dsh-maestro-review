@@ -101,7 +101,7 @@ function validateSavePayload(payload: unknown): { ok: true; patch: Partial<Maest
   return { ok: true, patch }
 }
 
-export const MAESTRO_RPC_CHANNEL = '/maestro/review'
+export const MAESTRO_RPC_CHANNEL = '/dsh-maestro-review'
 // Legacy alias kept for one minor release for backward compat with installs that still call '/dsh-maestro-harness'
 export const LEGACY_MAESTRO_RPC_CHANNEL = '/dsh-maestro-harness'
 export const MAESTRO_ENDPOINTS = Object.freeze({
