@@ -53,4 +53,27 @@ describe('maestro_perf_log_stats', ()=>{
     const txt=typeof res==='string'?res:(res as {text?:string}).text??JSON.stringify(res)
     expect(txt.toLowerCase()).toContain('escapes')
   })
+  it('strip trailing ERROR', async ()=>{
+    const {cleanJson}=await import('../src/perf-log-stats-tool.js')
+    const raw = `{"status":"failed"}  ERROR audit run 20260827T000425Z reported failed checks`
+    expect(cleanJson(raw)).toEqual(`{"status":"failed"}`)
+  })
+  it('strip trailing ERROR with newline', async ()=>{
+    const {cleanJson}=await import('../src/perf-log-stats-tool.js')
+    const raw = `{"status":"failed"}\n  ERROR audit run 20260827T000425Z reported failed checks`
+    expect(cleanJson(raw)).toEqual(`{"status":"failed"}`)
+  })
+  it('streaming bounded 2MiB truncates large log', async ()=>{
+    const {apply}=await import('../src/perf-log-stats-tool.js')
+    const {r,ctx}=cap(); apply(ctx as never,{})
+    const root=await tempDir()
+    await mkdir(join(root,'var/debug'),{recursive:true})
+    const big='a'.repeat(3*1024*1024)
+    await writeFile(join(root,'var/debug/db.log'), big)
+    const res=await r[0].execute({}, exec(root)) as {warnings:string[], inputs:{queryLog:{truncated:boolean, bytes:number}}}
+    const joined=(res.warnings??[]).join(' ')
+    expect(joined.toLowerCase()).toContain('truncated')
+    expect(res.inputs.queryLog.truncated).toBe(true)
+    expect(res.inputs.queryLog.bytes).toBe(3*1024*1024)
+  })
 })
