@@ -1,5 +1,6 @@
 {
   "name": "@ddtcorex/dsh-maestro-review",
+  "private": false,
   "version": "0.1.0",
   "description": "Maestro Review — pluggable ReviewProvider (GitLab/GitHub) + orchestrator for automated MR review",
   "type": "module",
@@ -49,5 +50,6 @@
     "bundle": {
       "patch": "./cordis.patch.yml"
     }
-  }
+  },
+  "packageManager": "pnpm@11.7.0"
 }
