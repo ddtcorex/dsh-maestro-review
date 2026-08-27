@@ -50,5 +50,6 @@
     "bundle": {
       "patch": "./cordis.patch.yml"
     }
-  }
+  },
+  "packageManager": "pnpm@11.7.0"
 }
