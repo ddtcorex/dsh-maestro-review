@@ -219,15 +219,44 @@ export function apply(ctx: Context): void {
     if (endpoint === MAESTRO_ENDPOINTS.modelsList) {
       const agentDefaultModel = ctx.get('agentDefaultModel') as { currentSelection(): { provider: string; model: string; reasoningEffort?: string } } | undefined
       const fallbackSelection = agentDefaultModel?.currentSelection() ?? { provider: 'deepseek-official', model: 'deepseek-chat' }
-      const llm = ctx.get('llm') as { listProviders?: () => Array<{ id: string; name: string }>; listModels?: (provider: string) => Promise<Array<{ id: string; name?: string }>> } | undefined
+      type LlmReasoningEffort = { id: string; name: string }
+      type LlmModelInfoWithReasoning = { id: string; name?: string; reasoning?: { efforts: LlmReasoningEffort[] } }
+      const llm = ctx.get('llm') as {
+        listProviders?: () => Array<{ id: string; name: string }>
+        listModels?: (provider: string) => Promise<readonly LlmModelInfoWithReasoning[]>
+        resolveModelInfo?: (provider: string, model: string) => Promise<LlmModelInfoWithReasoning & { reasoning?: { efforts: LlmReasoningEffort[] } }>
+      } | undefined
       if (llm?.listProviders !== undefined && llm?.listModels !== undefined) {
         try {
           const providers = llm.listProviders()
-          const groups: Array<{ provider: string; name: string; models: string[] }> = []
+          const groups: Array<{ provider: string; name: string; models: Array<{ id: string; name?: string; supportsReasoning: boolean; reasoningEfforts: string[]; reasoning?: { efforts: LlmReasoningEffort[] } }> }> = []
           for (const p of providers) {
             try {
               const models = await llm.listModels(p.id)
-              groups.push({ provider: p.id, name: p.name, models: models.map(m => m.id) })
+              const enriched = await Promise.all(models.map(async (m) => {
+                let efforts: string[] = (m as LlmModelInfoWithReasoning).reasoning?.efforts?.map(e => e.id) ?? []
+                let reasoningObj = (m as LlmModelInfoWithReasoning).reasoning
+                if (efforts.length === 0 && typeof llm.resolveModelInfo === 'function') {
+                  try {
+                    const resolved = await llm.resolveModelInfo(p.id, m.id)
+                    if (resolved?.reasoning?.efforts) {
+                      reasoningObj = resolved.reasoning
+                      efforts = resolved.reasoning.efforts.map(e => e.id)
+                    }
+                  } catch {
+                    // ignore resolve failures, keep original
+                  }
+                }
+                const supportsReasoning = efforts.filter(e => e !== 'off').length > 0
+                return {
+                  id: m.id,
+                  name: m.name,
+                  supportsReasoning,
+                  reasoningEfforts: efforts,
+                  ...(reasoningObj ? { reasoning: reasoningObj } : {}),
+                }
+              }))
+              groups.push({ provider: p.id, name: p.name, models: enriched })
             } catch {
               groups.push({ provider: p.id, name: p.name, models: [] })
             }
@@ -238,7 +267,14 @@ export function apply(ctx: Context): void {
         }
       }
       // Fallback: single group containing the current selection so dropdown still works
-      return ok({ groups: [{ provider: fallbackSelection.provider, name: fallbackSelection.provider, models: [fallbackSelection.model] }], current: fallbackSelection })
+      return ok({
+        groups: [{
+          provider: fallbackSelection.provider,
+          name: fallbackSelection.provider,
+          models: [{ id: fallbackSelection.model, name: fallbackSelection.model, supportsReasoning: false, reasoningEfforts: [] }],
+        }],
+        current: fallbackSelection,
+      })
     }
     return fail(`Unknown endpoint: ${endpoint}`)
   }
