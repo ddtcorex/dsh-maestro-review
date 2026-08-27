@@ -1,5 +1,6 @@
-import { join, resolve, sep } from 'node:path'
+import { basename, dirname, join, resolve, sep } from 'node:path'
 import { readFile, realpath, stat } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
@@ -9,11 +10,96 @@ export const inject=['tools']
 export const Config:z<{rootPath?:string}> = z.object({rootPath:z.string()})
 interface SC{agent?:{session?:{header?:{cwd?:string}}}}
 function workspaceRootFor(c:string|undefined,e:unknown):string{ if(c!==undefined) return c; const cwd=(e as SC|undefined)?.agent?.session?.header?.cwd; return typeof cwd==='string'&&cwd!==''?cwd:process.cwd()}
-async function isInsideRoot(r:string,t:string):Promise<boolean>{ const ar=resolve(r); const rs=resolve(ar,t); if(rs!==ar && !rs.startsWith(ar+sep)) return false; try{ const rr=await realpath(ar); const rt=await realpath(rs); return rt===rr||rt.startsWith(rr+sep)}catch{return false}}
-const MAX_FILE_BYTES=2*1024*1024
+async function isInsideRoot(r:string,t:string):Promise<boolean>{
+  const ar=resolve(r); const rs=resolve(ar,t)
+  if(rs!==ar && !rs.startsWith(ar+sep)) return false
+  let realRoot:string
+  try{ realRoot=await realpath(ar) }catch{
+    // if root does not exist yet (e.g. .worktrees not created), fallback to lexical check only
+    return true
+  }
+  let existing=rs
+  const pending:string[]=[]
+  while(true){
+    let real:string
+    try{ real=await realpath(existing) }catch(err){
+      if((err as NodeJS.ErrnoException).code!=='ENOENT') return false
+      const parent=dirname(existing)
+      if(parent===existing) return false
+      pending.unshift(basename(existing))
+      existing=parent
+      continue
+    }
+    const realTarget=pending.length>0 ? resolve(real, ...pending) : real
+    if(realTarget!==realRoot && !realTarget.startsWith(realRoot+sep)) return false
+    return true
+  }
+}
+export const MAX_FILE_BYTES=2*1024*1024
 
-async function boundedRead(p:string):Promise<{exists:boolean, text:string|null, bytes:number, truncated:boolean}>{
-  try{ const s=await stat(p); if(s.size>MAX_FILE_BYTES) { const b=await readFile(p); return {exists:true, text:b.toString('utf-8').slice(0,MAX_FILE_BYTES), bytes:s.size, truncated:true} } const b=await readFile(p); return {exists:true, text:b.toString('utf-8'), bytes:b.byteLength, truncated:false} }catch{ return {exists:false, text:null, bytes:0, truncated:false} }
+export function cleanJson(raw:string):string{
+  // strip trailing ERROR line outside JSON (large audit 2.8MB case, sed '$d' before jq)
+  // Handles both "\n  ERROR audit run ..." and "  ERROR audit run ..." suffix
+  return raw.replace(/\n\s*ERROR audit run.*$/s, '').replace(/\s{2,}ERROR audit run.*$/s, '').trimEnd()
+}
+
+async function govardShCat(worktreePath:string, relPath:string):Promise<{text:string, bytes:number, truncated:boolean}|null>{
+  // streaming cat var/debug/db.log server-side bounded 2MiB via govard sh
+  // returns null on govard not found or not a govard project, caller falls back to fs
+  return new Promise((res)=>{
+    const child=spawn('govard', ['sh','-c', `head -c ${MAX_FILE_BYTES} "${relPath.replace(/"/g,'\\"')}" 2>/dev/null`], {cwd: worktreePath})
+    let out=''
+    let err=''
+    child.stdout?.on('data',(c:Buffer)=> out+=c.toString())
+    child.stderr?.on('data',(c:Buffer)=> err+=c.toString())
+    child.on('error',()=> res(null))
+    child.on('close', async (code)=>{
+      const combined=out+err
+      if(code!==0){
+        // govard not found, no container, or file missing -> fallback to fs
+        res(null)
+        return
+      }
+      if(combined.includes('Error response from daemon') || combined.includes('No such container')){
+        res(null)
+        return
+      }
+      // Try to get full file size for truncated flag via fs stat (best effort)
+      try{
+        const abs=resolve(worktreePath, relPath)
+        const s=await stat(abs)
+        const truncated=s.size>MAX_FILE_BYTES
+        const text=truncated ? out.slice(0, MAX_FILE_BYTES) : out
+        res({text, bytes:s.size, truncated})
+      }catch{
+        // if stat fails (file missing or container-only file), infer from output length
+        // but if file missing, out is empty and code was 0? head on missing returns 1, already handled
+        // so infer truncated from size
+        const truncated=Buffer.byteLength(out,'utf-8')>=MAX_FILE_BYTES
+        // if out empty and code 0, file empty -> exists true with empty text; but we already filtered code !=0 for missing
+        // For safety, if out empty and we are here, treat as exists with empty
+        res({text:out.slice(0,MAX_FILE_BYTES), bytes:Buffer.byteLength(out,'utf-8'), truncated})
+      }
+    })
+  })
+}
+
+async function boundedRead(p:string, worktreePath?:string, relPath?:string):Promise<{exists:boolean, text:string|null, bytes:number, truncated:boolean}>{
+  // Prefer govard sh streaming when worktreePath+relPath supplied and govard available
+  if(worktreePath && relPath){
+    const via=await govardShCat(worktreePath, relPath)
+    if(via) return {exists:true, text:via.text, bytes:via.bytes, truncated:via.truncated}
+  }
+  try{
+    const s=await stat(p)
+    if(s.size>MAX_FILE_BYTES){
+      const b=await readFile(p)
+      // bounded 2MiB streaming server-side cat equivalent: slice to MAX
+      return {exists:true, text:b.toString('utf-8').slice(0,MAX_FILE_BYTES), bytes:s.size, truncated:true}
+    }
+    const b=await readFile(p)
+    return {exists:true, text:b.toString('utf-8'), bytes:b.byteLength, truncated:false}
+  }catch{ return {exists:false, text:null, bytes:0, truncated:false} }
 }
 function normalizeShape(sql:string):string{
   return sql.replace(/'[^']*'/g, '?').replace(/"[^"]*"/g,'?').replace(/\b\d+\b/g,'?').replace(/\s+/g,' ').trim().slice(0,200)
@@ -62,8 +148,8 @@ export function apply(ctx:Context, config:{rootPath?:string}={}):void{
       if(!(await isInsideRoot(worktreePath, queryLogPath)) && queryLogPath!== 'var/debug/db.log') return {text:`Path "${queryLogPath}" escapes the workspace root.`, truncated:false} as never
 
       const warnings:string[]=[]
-      const qRead=await boundedRead(qLogAbs)
-      const pRead=await boundedRead(resolve(worktreePath, profilerCsvPath))
+      const qRead=await boundedRead(qLogAbs, worktreePath, queryLogPath)
+      const pRead=await boundedRead(resolve(worktreePath, profilerCsvPath), worktreePath, profilerCsvPath)
 
       const inputs={
         queryLog:{path:queryLogPath, exists:qRead.exists, bytes:qRead.bytes, truncated:qRead.truncated},
@@ -74,6 +160,8 @@ export function apply(ctx:Context, config:{rootPath?:string}={}):void{
       if(!qRead.exists) warnings.push('query log not found — run dev:query-log:enable')
       if(!pRead.exists) warnings.push('profiler CSV not found')
       if(qRead.exists && qRead.text && qRead.text.length===0) warnings.push('query log empty')
+      if(qRead.truncated) warnings.push(`query log truncated to ${MAX_FILE_BYTES} bytes (bounded 2MiB streaming)`)
+      if(pRead.truncated) warnings.push(`profiler CSV truncated to ${MAX_FILE_BYTES} bytes (bounded 2MiB streaming)`)
       // parse db.log
       const shapeMap=new Map<string,{count:number, totalMs:number, maxMs:number, example:string, callers:string[]}>()
       if(qRead.text){
