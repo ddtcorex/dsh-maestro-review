@@ -70,6 +70,36 @@ export function agentOptionsForModel(selection: ModelSelection): ModelSelection 
   }
 }
 
+export function isUnsupportedReasoningError(err: unknown): boolean {
+  const code = (err as { code?: unknown })?.code
+  if (code === 'UNSUPPORTED_REASONING_EFFORT') return true
+  const message = (err as { message?: unknown })?.message
+  const text = typeof message === 'string' ? message : typeof err === 'string' ? err : String(message ?? err ?? '')
+  return text.includes('does not support reasoning effort')
+    || text.includes('UNSUPPORTED_REASONING_EFFORT')
+}
+
+export function getTurnErrorMessage(handle: unknown): string | undefined {
+  try {
+    const events = (handle as { agent?: { session?: { events?: unknown[] } } })?.agent?.session?.events
+    if (!Array.isArray(events)) return undefined
+    for (let i = events.length - 1; i >= 0; i--) {
+      const ev = events[i] as { type?: unknown; data?: { reason?: { kind?: unknown; error?: { message?: unknown; code?: unknown } } } }
+      if (ev?.type === 'turn/end' && ev?.data?.reason?.kind === 'error') {
+        const err = ev.data.reason.error
+        if (err !== undefined && err !== null) {
+          if (typeof (err as { message?: unknown }).message === 'string') return (err as { message: string }).message
+          if (typeof (err as { code?: unknown }).code === 'string') return String((err as { code: unknown }).code)
+          try { return JSON.stringify(err) } catch { return String(err) }
+        }
+      }
+    }
+    return undefined
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * Resolve the model to use for an automated review. Priority: per-project
  * override > global reviewModel > DSH default (`fallback`).
@@ -505,96 +535,128 @@ export function apply(ctx: Context, config: Config): void {
   // effect without a plugin restart.
   let effectiveAgentTimeoutMs = config.agentTimeoutMs
   async function runReviewer(worktreePath: string | undefined, payload: ReviewRequest, effective: { gitlabBaseUrl: string; gitlabToken: string; botUsername: string }, reviewProfile?: ReviewSkillProfile, modelSelection?: ModelSelection, incrementalBlock?: string): Promise<ReviewOutcome> {
-    let capturedFindings: ReviewFinding[] = []
-    let handle: AgentHandle
-    let reviewerContext: Context | undefined
-    const agentOptions = agentOptionsForModel(modelSelection ?? ctx.agentDefaultModel.currentSelection())
-    try {
-      handle = await ctx.agents.create({
-        sessionId: SessionId(`maestro-reviewer-${payload.mrIid}-${Date.now()}`),
-        meta: { cwd: worktreePath ?? tmpdir() },
-        agentOptions,
-        setup: async (agentCtx) => {
-          reviewerContext = agentCtx
-          installModelSelection(agentCtx, { current: agentOptions, assembled: undefined })
-          await agentCtx.plugin(ReviewToolPolicy)
-          await mountAgentPreset(ctx.agentPresets, agentCtx, 'dsh-maestro-reviewer')
-          await agentCtx.plugin(GitlabClient, {
-            baseUrl: effective.gitlabBaseUrl,
-            projectId: payload.projectId,
-            mrIid: payload.mrIid,
-            token: effective.gitlabToken,
-            botUsername: effective.botUsername,
-          })
-          await agentCtx.plugin(ReviewFindingsTool, { onReport: (findings) => { capturedFindings = findings } })
-          // Diff-only runs have no worktree; nothing to search there.
-          if (worktreePath !== undefined) {
-            await agentCtx.plugin(SearchTool, { rootPath: worktreePath })
-            await agentCtx.plugin(HyvaThemeInspectTool, { rootPath: worktreePath })
-            await agentCtx.plugin(HyvaCspScanTool, { rootPath: worktreePath })
-            await agentCtx.plugin(LayoutXmlTool, { rootPath: worktreePath })
-            await agentCtx.plugin(ModuleCheckTool, { rootPath: worktreePath })
-            await agentCtx.plugin(PhtmlEscapeScanTool, { rootPath: worktreePath })
-            await agentCtx.plugin(ScopeSplitTool, { rootPath: worktreePath })
-            await agentCtx.plugin(GovardAuditLintTool, { rootPath: worktreePath })
-            await agentCtx.plugin(PerfLogStatsTool, { rootPath: worktreePath })
+    const primaryOptions = agentOptionsForModel(modelSelection ?? ctx.agentDefaultModel.currentSelection())
+    const fallbackOptions: ModelSelection = { provider: primaryOptions.provider, model: primaryOptions.model }
+    let lastHandle: AgentHandle | undefined
+    const runOnce = async (agentOptions: ModelSelection): Promise<ReviewOutcome> => {
+      let capturedFindings: ReviewFinding[] = []
+      let handle: AgentHandle | undefined
+      let reviewerContext: Context | undefined
+      try {
+        handle = await ctx.agents.create({
+          sessionId: SessionId(`maestro-reviewer-${payload.mrIid}-${Date.now()}`),
+          meta: { cwd: worktreePath ?? tmpdir() },
+          agentOptions,
+          setup: async (agentCtx) => {
+            reviewerContext = agentCtx
+            installModelSelection(agentCtx, { current: agentOptions, assembled: undefined })
+            await agentCtx.plugin(ReviewToolPolicy)
+            await mountAgentPreset(ctx.agentPresets, agentCtx, 'dsh-maestro-reviewer')
+            await agentCtx.plugin(GitlabClient, {
+              baseUrl: effective.gitlabBaseUrl,
+              projectId: payload.projectId,
+              mrIid: payload.mrIid,
+              token: effective.gitlabToken,
+              botUsername: effective.botUsername,
+            })
+            await agentCtx.plugin(ReviewFindingsTool, { onReport: (findings) => { capturedFindings = findings } })
+            // Diff-only runs have no worktree; nothing to search there.
+            if (worktreePath !== undefined) {
+              await agentCtx.plugin(SearchTool, { rootPath: worktreePath })
+              await agentCtx.plugin(HyvaThemeInspectTool, { rootPath: worktreePath })
+              await agentCtx.plugin(HyvaCspScanTool, { rootPath: worktreePath })
+              await agentCtx.plugin(LayoutXmlTool, { rootPath: worktreePath })
+              await agentCtx.plugin(ModuleCheckTool, { rootPath: worktreePath })
+              await agentCtx.plugin(PhtmlEscapeScanTool, { rootPath: worktreePath })
+              await agentCtx.plugin(ScopeSplitTool, { rootPath: worktreePath })
+              await agentCtx.plugin(GovardAuditLintTool, { rootPath: worktreePath })
+              await agentCtx.plugin(PerfLogStatsTool, { rootPath: worktreePath })
+            }
+          },
+        })
+      } catch (err) {
+        lastHandle = handle
+        throw new Error(`failed to create reviewer agent: ${err instanceof Error ? err.message : String(err)}`)
+      }
+      lastHandle = handle
+      ctx.sessionTitle.rename(handle.agent.session, `Maestro Reviewer — MR !${payload.mrIid} (${payload.projectPath})`)
+      try {
+        const profileInstruction = reviewProfile === undefined
+          ? 'This is a diff-only review with no local checkout or Magento environment. Do not claim that tests, static analysis, or Magento runtime validation ran. '
+          : `Call maestro_load_review_profile with {"profile":"${reviewProfile}"} before examining code. `
+        let scopePrompt = payload.scope.kind === 'discussion'
+          ? `${profileInstruction}Review only the requested inline discussion ${payload.scope.discussionId} at ${payload.scope.path}:${payload.scope.line}. Do not review unrelated files or start a broad audit. Call gitlab_get_mr_diff, then call report_review_findings exactly once when done.`
+          : `${profileInstruction}Review this merge request (${payload.mode} mode). Call gitlab_list_own_review_threads and gitlab_get_mr_diff first, then call report_review_findings exactly once when done.`
+        if (incrementalBlock !== undefined) scopePrompt = `${incrementalBlock}\n\n${scopePrompt}`
+        handle.agent.followup(createUserMessage({
+          content: [{ type: 'text', text: scopePrompt }],
+          source: { kind: 'user' },
+        }))
+        await whenIdleWithTimeout(handle, effectiveAgentTimeoutMs)
+        if (reviewProfile !== undefined && (reviewerContext === undefined || loadedReviewProfile(reviewerContext) !== reviewProfile)) {
+          throw new Error(`reviewer did not successfully load the required ${reviewProfile} review skill profile; no findings were posted`)
+        }
+
+        // An inline command is a request to discuss one existing thread, not a
+        // license to fan out new threads across the MR. The report tool remains
+        // useful as a structured response channel, but its findings are folded
+        // into the one reply made by runReviewAndAudit below.
+        if (payload.scope.kind === 'discussion') {
+          const response = capturedFindings.length === 0
+            ? 'No actionable issue found for the requested line.'
+            : capturedFindings.map((finding) => finding.body).join('\n\n')
+          return { summary: response, failures: [] }
+        }
+
+        const failures: string[] = []
+        let postedNew = 0
+        let postedReplies = 0
+        const findingPoster: GitlabFindingPoster = {
+          baseUrl: effective.gitlabBaseUrl,
+          token: effective.gitlabToken,
+          projectId: payload.projectId,
+          mrIid: payload.mrIid,
+        }
+        for (const [index, finding] of capturedFindings.entries()) {
+          try {
+            await postReviewFindings([finding], findingPoster)
+            if (finding.status === 'new') postedNew++
+            else postedReplies++
+          } catch (err) {
+            const locator = finding.status === 'new' ? `${finding.path}:${finding.line}` : finding.discussionId
+            failures.push(`${locator}: ${err instanceof Error ? err.message : String(err)}`)
           }
-        },
-      })
-    } catch (err) {
-      throw new Error(`failed to create reviewer agent: ${err instanceof Error ? err.message : String(err)}`)
+        }
+        return { summary: `${postedNew} new inline comment(s), ${postedReplies} thread(s) updated.`, failures }
+      } finally {
+        await handle.dispose()
+      }
     }
-    ctx.sessionTitle.rename(handle.agent.session, `Maestro Reviewer — MR !${payload.mrIid} (${payload.projectPath})`)
     try {
-      const profileInstruction = reviewProfile === undefined
-        ? 'This is a diff-only review with no local checkout or Magento environment. Do not claim that tests, static analysis, or Magento runtime validation ran. '
-        : `Call maestro_load_review_profile with {"profile":"${reviewProfile}"} before examining code. `
-      let scopePrompt = payload.scope.kind === 'discussion'
-        ? `${profileInstruction}Review only the requested inline discussion ${payload.scope.discussionId} at ${payload.scope.path}:${payload.scope.line}. Do not review unrelated files or start a broad audit. Call gitlab_get_mr_diff, then call report_review_findings exactly once when done.`
-        : `${profileInstruction}Review this merge request (${payload.mode} mode). Call gitlab_list_own_review_threads and gitlab_get_mr_diff first, then call report_review_findings exactly once when done.`
-      if (incrementalBlock !== undefined) scopePrompt = `${incrementalBlock}\n\n${scopePrompt}`
-      handle.agent.followup(createUserMessage({
-        content: [{ type: 'text', text: scopePrompt }],
-        source: { kind: 'user' },
-      }))
-      await whenIdleWithTimeout(handle, effectiveAgentTimeoutMs)
-      if (reviewProfile !== undefined && (reviewerContext === undefined || loadedReviewProfile(reviewerContext) !== reviewProfile)) {
-        throw new Error(`reviewer did not successfully load the required ${reviewProfile} review skill profile; no findings were posted`)
-      }
-
-      // An inline command is a request to discuss one existing thread, not a
-      // license to fan out new threads across the MR. The report tool remains
-      // useful as a structured response channel, but its findings are folded
-      // into the one reply made by runReviewAndAudit below.
-      if (payload.scope.kind === 'discussion') {
-        const response = capturedFindings.length === 0
-          ? 'No actionable issue found for the requested line.'
-          : capturedFindings.map((finding) => finding.body).join('\n\n')
-        return { summary: response, failures: [] }
-      }
-
-      const failures: string[] = []
-      let postedNew = 0
-      let postedReplies = 0
-      const findingPoster: GitlabFindingPoster = {
-        baseUrl: effective.gitlabBaseUrl,
-        token: effective.gitlabToken,
-        projectId: payload.projectId,
-        mrIid: payload.mrIid,
-      }
-      for (const [index, finding] of capturedFindings.entries()) {
+      return await runOnce(primaryOptions)
+    } catch (err) {
+      const turnMsg = getTurnErrorMessage(lastHandle)
+      const isTurnUnsupported = turnMsg !== undefined && (turnMsg.includes('does not support reasoning effort') || turnMsg.includes('UNSUPPORTED_REASONING_EFFORT'))
+      const isUnsupported = isUnsupportedReasoningError(err) || isTurnUnsupported
+      if (primaryOptions.reasoningEffort !== undefined && isUnsupported) {
+        const originalMsg = turnMsg ?? (err instanceof Error ? err.message : String(err))
         try {
-          await postReviewFindings([finding], findingPoster)
-          if (finding.status === 'new') postedNew++
-          else postedReplies++
-        } catch (err) {
-          const locator = finding.status === 'new' ? `${finding.path}:${finding.line}` : finding.discussionId
-          failures.push(`${locator}: ${err instanceof Error ? err.message : String(err)}`)
+          const result = await runOnce(fallbackOptions)
+          console.warn(`maestro-orchestrator: Review model ${primaryOptions.provider}/${primaryOptions.model} with reasoningEffort "${String(primaryOptions.reasoningEffort)}" is unsupported; retried without reasoningEffort and succeeded`)
+          return result
+        } catch (retryErr) {
+          const retryMsg = getTurnErrorMessage(lastHandle) ?? (retryErr instanceof Error ? retryErr.message : String(retryErr))
+          throw new Error(`Review model ${primaryOptions.provider}/${primaryOptions.model} with reasoningEffort "${String(primaryOptions.reasoningEffort)}" is unsupported (${originalMsg}). Retried without reasoningEffort but still failed: ${retryMsg}. Remove reasoningEffort in Settings → Maestro → Review model or choose a reasoning-capable model.`)
         }
       }
-      return { summary: `${postedNew} new inline comment(s), ${postedReplies} thread(s) updated.`, failures }
-    } finally {
-      await handle.dispose()
+      if (err instanceof Error && err.message.includes('did not successfully load the required')) {
+        const effort = String(primaryOptions.reasoningEffort)
+        const hint = primaryOptions.reasoningEffort === undefined
+          ? `${err.message}. Check that maestro-skills are installed and DSH was restarted after install.`
+          : `${err.message}. Model ${primaryOptions.provider}/${primaryOptions.model} with reasoningEffort "${effort}" may be unsupported — check Settings → Maestro → Review model. Original turn likely failed with UNSUPPORTED_REASONING_EFFORT — see session.jsonl.zstd turn/end.`
+        throw new Error(hint)
+      }
+      throw err
     }
   }
 
