@@ -80,6 +80,10 @@ export function apply(ctx:Context, config:{rootPath?:string, timeoutMs?:number}=
           lint:{type:'object', required:true, additionalProperties:true},
           summary:{type:'object', required:true, additionalProperties:true},
           rawJson:{type:'object', required:true, additionalProperties:true},
+          errors:{type:'array', items:{type:'object', additionalProperties:true}},
+          diagnostics:{type:'string'},
+          sessionId:{type:'string'},
+          runId:{type:'string'},
         }
       },
       render:(_a,v:{ok:boolean})=>[{type:'text', text: v.ok? 'audit lint passed':'audit lint failed'}],
@@ -96,10 +100,10 @@ export function apply(ctx:Context, config:{rootPath?:string, timeoutMs?:number}=
       const cliArgs=['audit','run','--checks','lint','--format','json']
       const result=await run('govard', cliArgs, worktreePath, timeoutMs)
       if(result.timedOut){
-        return {ok:false, exitCode:result.code, timedOut:true, worktreePath, lint:{phpcs:{violations:[]}, phpstan:{errors:[]}, pubMediaGuard:{violations:[]}}, summary:{status:null, phpVersions:[], matrixComplete:false, findingCount:0, truncated:false}, rawJson:null, errors:[{code:'timeout', message:`timed out after ${timeoutMs}ms` }], diagnostics:result.stderr.slice(0,4000)} as never
+        return {ok:false, exitCode: result.code ?? 124, timedOut:true, worktreePath, lint:{phpcs:{violations:[]}, phpstan:{errors:[]}, pubMediaGuard:{violations:[]}}, summary:{status:null, phpVersions:[], matrixComplete:false, findingCount:0, truncated:false}, rawJson:{}, errors:[{code:'timeout', message:`timed out after ${timeoutMs}ms` }], diagnostics:result.stderr.slice(0,4000)} as never
       }
       if(result.code===null && result.stderr.includes('ENOENT')){
-        return {ok:false, exitCode:null, timedOut:false, worktreePath, lint:{phpcs:{violations:[]}, phpstan:{errors:[]}, pubMediaGuard:{violations:[]}}, summary:{status:null, phpVersions:[], matrixComplete:false, findingCount:0, truncated:false}, rawJson:null, errors:[{code:'govard_not_found', message:'govard binary not found'}], diagnostics:result.stderr.slice(0,4000)} as never
+        return {ok:false, exitCode:127, timedOut:false, worktreePath, lint:{phpcs:{violations:[]}, phpstan:{errors:[]}, pubMediaGuard:{violations:[]}}, summary:{status:null, phpVersions:[], matrixComplete:false, findingCount:0, truncated:false}, rawJson:{}, errors:[{code:'govard_not_found', message:'govard binary not found'}], diagnostics:result.stderr.slice(0,4000)} as never
       }
       const cleaned=cleanJson(result.stdout)
       let parsed:any=null
@@ -113,7 +117,7 @@ export function apply(ctx:Context, config:{rootPath?:string, timeoutMs?:number}=
         }
       }
       if(!parsed){
-        return {ok:false, exitCode:result.code, timedOut:false, worktreePath, lint:{phpcs:{violations:[]}, phpstan:{errors:[]}, pubMediaGuard:{violations:[]}}, summary:{status:null, phpVersions:[], matrixComplete:false, findingCount:0, truncated:false}, rawJson:null, errors:[{code:'parse_error', message:'stdout not JSON'}], diagnostics:(cleaned+result.stderr).slice(0,4000)} as never
+        return {ok:false, exitCode: result.code ?? 1, timedOut:false, worktreePath, lint:{phpcs:{violations:[]}, phpstan:{errors:[]}, pubMediaGuard:{violations:[]}}, summary:{status:null, phpVersions:[], matrixComplete:false, findingCount:0, truncated:false}, rawJson:{}, errors:[{code:'parse_error', message:'stdout not JSON'}], diagnostics:(cleaned+result.stderr).slice(0,4000)} as never
       }
       const findings:Array<any>=parsed.findings ?? parsed.evidence?.php_results?.flatMap((r:any)=>r.findings) ?? []
       const phpcsViolations:any[]=[]
@@ -129,18 +133,20 @@ export function apply(ctx:Context, config:{rootPath?:string, timeoutMs?:number}=
       const status=parsed.status ?? (result.code===0?'passed':'failed')
       const phpVersions=parsed.php_versions ?? parsed.phpVersions ?? []
       const findingCount=findings.length
+      const sessionId = parsed.session_id ?? parsed.sessionId ?? undefined
+      const runId = parsed.run_id ?? parsed.runId ?? undefined
       return {
         ok: result.code===0,
-        exitCode: result.code,
+        exitCode: result.code ?? 0,
         timedOut:false,
         worktreePath,
-        sessionId: parsed.session_id ?? parsed.sessionId ?? null,
-        runId: parsed.run_id ?? parsed.runId ?? null,
-        rawJson: parsed,
+        ...(sessionId ? { sessionId: String(sessionId) } : {}),
+        ...(runId ? { runId: String(runId) } : {}),
+        rawJson: parsed as Record<string, unknown>,
         summary:{status, phpVersions, matrixComplete:true, findingCount, truncated: findingCount>100},
         lint:{phpcs:{violations:phpcsViolations}, phpstan:{errors:phpstanErrors}, pubMediaGuard:{violations:pubMediaViolations}},
         errors:[],
-        diagnostics: result.stderr.slice(0,4000) || null,
+        diagnostics: result.stderr.slice(0,4000),
       } as never
     }
   })))

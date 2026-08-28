@@ -325,15 +325,22 @@ export async function postReviewFindings(findings: ReviewFinding[], config: Gitl
         throw new Error(`cannot post inline finding at ${finding.path}:${finding.line}: GitLab did not return this file's complete diff`)
       }
       const linePosition = diffPositionForNewLine(change.diff, finding.line)
-      if (linePosition === undefined) throw new Error(`cannot post inline finding at ${finding.path}:${finding.line}: line is not in the current MR diff`)
-      response = await fetcher(`${apiBase}/discussions`, {
-        method: 'POST', headers,
-        body: JSON.stringify({ body: finding.body, position: {
-          position_type: 'text', ...snapshot.diffRefs, old_path: change.old_path, new_path: change.new_path,
-          ...linePosition.oldLine === undefined ? {} : { old_line: linePosition.oldLine },
-          ...linePosition.newLine === undefined ? {} : { new_line: linePosition.newLine },
-        } }),
-      })
+      if (linePosition === undefined) {
+        // Line not in diff — fallback to MR note so finding is not silently lost.
+        response = await fetcher(`${apiBase}/notes`, {
+          method: 'POST', headers,
+          body: JSON.stringify({ body: `**Inline fallback — \`${finding.path}:${finding.line}\` line is not in current MR diff**\n\n${finding.body}` }),
+        })
+      } else {
+        response = await fetcher(`${apiBase}/discussions`, {
+          method: 'POST', headers,
+          body: JSON.stringify({ body: finding.body, position: {
+            position_type: 'text', ...snapshot.diffRefs, old_path: change.old_path, new_path: change.new_path,
+            ...linePosition.oldLine === undefined ? {} : { old_line: linePosition.oldLine },
+            ...linePosition.newLine === undefined ? {} : { new_line: linePosition.newLine },
+          } }),
+        })
+      }
     }
     if (!response.ok) throw new Error(`GitLab API error ${response.status}: ${await response.text()}`)
   }

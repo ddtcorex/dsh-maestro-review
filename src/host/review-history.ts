@@ -21,6 +21,7 @@ export interface ReviewHistoryEntry {
 }
 
 const HISTORY_CAP = 100
+const STALE_RUNNING_MS = 2 * 60 * 60_000 // 2h — host restart can leave running without finish
 
 export function historyPath(dshHome?: string): string {
   const home = dshHome ?? process.env.DSH_HOME ?? join(homedir(), '.dsh')
@@ -47,9 +48,24 @@ async function writeAll(entries: ReviewHistoryEntry[], dshHome?: string): Promis
   await chmod(path, 0o600)
 }
 
+function failStaleRunning(entries: ReviewHistoryEntry[]): boolean {
+  let mutated = false
+  const now = Date.now()
+  for (const e of entries) {
+    if (e.status === 'running' && now - e.startedAt > STALE_RUNNING_MS) {
+      e.status = 'failed'
+      e.error = e.error ?? 'auto-failed: stale running review (host restart or crash)'
+      e.finishedAt = e.finishedAt ?? now
+      mutated = true
+    }
+  }
+  return mutated
+}
+
 /** Prepend a running entry; the oldest entries fall off past `HISTORY_CAP`. */
 export async function recordReviewStart(entry: Omit<ReviewHistoryEntry, 'status'>, dshHome?: string): Promise<void> {
   const all = await readAll(dshHome)
+  if (failStaleRunning(all)) await writeAll(all, dshHome)
   all.unshift({ ...entry, status: 'running' })
   await writeAll(all.slice(0, HISTORY_CAP), dshHome)
 }
@@ -91,9 +107,11 @@ export async function lastCompletedReview(projectId: number, mrIid: number, dshH
  */
 export async function pruneHistory(retentionDays: number, dshHome?: string): Promise<void> {
   if (!Number.isFinite(retentionDays) || retentionDays <= 0) return
+  const all = await readAll(dshHome)
+  failStaleRunning(all)
   const cutoff = Date.now() - retentionDays * DAY_MS
   const kept: ReviewHistoryEntry[] = []
-  for (const entry of await readAll(dshHome)) {
+  for (const entry of all) {
     if ((entry.finishedAt ?? entry.startedAt) < cutoff) continue
     kept.push(entry)
   }
