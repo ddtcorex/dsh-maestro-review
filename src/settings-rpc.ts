@@ -1,6 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-connection'
-import type { RpcErrorDetailsMap, RpcResult } from '@deepseek-ai/dsh-host-apiproxy/api'
+import type { RpcErrorDetailsMap, RpcResult } from '@deepseek-ai/dsh-client-connection'
 import { existsSync, statSync } from 'node:fs'
 import { loadUserConfig, saveUserConfig, type MaestroUserConfig } from './config-store.js'
 import { listReviews } from './review-history.js'
