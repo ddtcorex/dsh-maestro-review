@@ -12,7 +12,7 @@ function exec(cwd:string):unknown{ return {callId:'c', name:'magento_module_chec
 
 describe('magento_module_check', ()=>{
   it('valid module passes with no critical issues', async ()=>{
-    const {apply}=await import('../src/module-check-tool.js')
+    const {apply}=await import('../src/host/module-check-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     expect(r[0].name).toBe('magento_module_check')
     const root=await tempDir()
@@ -30,7 +30,7 @@ describe('magento_module_check', ()=>{
     expect(res.modules[0].module.hasDbSchema).toBe(true)
   })
   it('missing registration.php reports issue and hasRegistration false', async ()=>{
-    const {apply}=await import('../src/module-check-tool.js')
+    const {apply}=await import('../src/host/module-check-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     const root=await tempDir()
     const mod=join(root,'app/code/Acme/Bad')
@@ -41,7 +41,7 @@ describe('magento_module_check', ()=>{
     expect(res.modules[0].issues.some(i=>i.rule==='registration-missing')).toBe(true)
   })
   it('name mismatch between registration and module.xml flagged', async ()=>{
-    const {apply}=await import('../src/module-check-tool.js')
+    const {apply}=await import('../src/host/module-check-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     const root=await tempDir()
     const mod=join(root,'app/code/Acme/Mismatch')
@@ -52,7 +52,7 @@ describe('magento_module_check', ()=>{
     expect(res.modules[0].issues.some(i=>i.rule==='name-mismatch')).toBe(true)
   })
   it('single modulePath mode scans only that module', async ()=>{
-    const {apply}=await import('../src/module-check-tool.js')
+    const {apply}=await import('../src/host/module-check-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     const root=await tempDir()
     await mkdir(join(root,'app/code/Acme/A/etc'),{recursive:true})
@@ -66,7 +66,7 @@ describe('magento_module_check', ()=>{
     expect(res.modules[0].path).toContain('Acme/A')
   })
   it('rejects escaping modulePath', async ()=>{
-    const {apply}=await import('../src/module-check-tool.js')
+    const {apply}=await import('../src/host/module-check-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     const root=await tempDir()
     const res=await r[0].execute({modulePath:'../../etc'}, exec(root)) as {text?:string}
@@ -74,7 +74,7 @@ describe('magento_module_check', ()=>{
     expect(txt.toLowerCase()).toContain('escapes')
   })
   it('detects Hyva incompatible via data-bind in phtml', async ()=>{
-    const {apply}=await import('../src/module-check-tool.js')
+    const {apply}=await import('../src/host/module-check-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     const root=await tempDir()
     const mod=join(root,'app/code/Acme/HyvaTest')

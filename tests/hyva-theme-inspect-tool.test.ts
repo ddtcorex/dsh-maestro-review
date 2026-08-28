@@ -29,7 +29,7 @@ function execFromSessionCwd(cwd: string): unknown {
 
 describe('hyva_theme_inspect', () => {
   it('discovers Hyva vs CSP theme and tailwind v4 via package.json + sources', async () => {
-    const { apply } = await import('../src/hyva-theme-inspect-tool.js')
+    const { apply } = await import('../src/host/hyva-theme-inspect-tool.js')
     const { registered, ctx } = captureRegistered()
     apply(ctx as never, {})
     expect(registered.length).toBe(1)
@@ -53,7 +53,7 @@ describe('hyva_theme_inspect', () => {
   })
 
   it('parses v3 extend/safelist/content via tailwind.config.js regex', async () => {
-    const { apply } = await import('../src/hyva-theme-inspect-tool.js')
+    const { apply } = await import('../src/host/hyva-theme-inspect-tool.js')
     const { registered, ctx } = captureRegistered()
     apply(ctx as never, {})
     const root = await tempDir()
@@ -69,7 +69,7 @@ describe('hyva_theme_inspect', () => {
   })
 
   it('degrades to null fields with notes on worktree without vendor/ or built CSS', async () => {
-    const { apply } = await import('../src/hyva-theme-inspect-tool.js')
+    const { apply } = await import('../src/host/hyva-theme-inspect-tool.js')
     const { registered, ctx } = captureRegistered()
     apply(ctx as never, {})
     const root = await tempDir()
@@ -81,7 +81,7 @@ describe('hyva_theme_inspect', () => {
   })
 
   it('rejects path escaping workspace root', async () => {
-    const { apply } = await import('../src/hyva-theme-inspect-tool.js')
+    const { apply } = await import('../src/host/hyva-theme-inspect-tool.js')
     const { registered, ctx } = captureRegistered()
     apply(ctx as never, {})
     const root = await tempDir()

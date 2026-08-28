@@ -12,7 +12,7 @@ function exec(cwd:string):unknown{ return { callId:'c', name:'layout_xml_extract
 
 describe('layout_xml_extract', ()=>{
   it('extracts handle, blocks, moves, head from layout XML', async ()=>{
-    const { apply } = await import('../src/layout-xml-tool.js')
+    const { apply } = await import('../src/host/layout-xml-tool.js')
     const { r, ctx } = cap(); apply(ctx as never, {})
     expect(r[0].name).toBe('layout_xml_extract')
     const root = await tempDir()
@@ -33,7 +33,7 @@ describe('layout_xml_extract', ()=>{
     expect(res.handles[0].head.css[0].src).toBe('css/demo.css')
   })
   it('derives handle from filename and reports templateExists false when missing', async ()=>{
-    const { apply } = await import('../src/layout-xml-tool.js')
+    const { apply } = await import('../src/host/layout-xml-tool.js')
     const { r, ctx } = cap(); apply(ctx as never, {})
     const root = await tempDir()
     await mkdir(join(root,'view/frontend/layout'),{recursive:true})
@@ -43,7 +43,7 @@ describe('layout_xml_extract', ()=>{
     expect(res.handles[0].blocks[0].templateExists).toBe(false)
   })
   it('returns parseError on malformed XML without throwing', async ()=>{
-    const { apply } = await import('../src/layout-xml-tool.js')
+    const { apply } = await import('../src/host/layout-xml-tool.js')
     const { r, ctx } = cap(); apply(ctx as never, {})
     const root = await tempDir()
     await mkdir(join(root,'app/code/X/Y/view/frontend/layout'),{recursive:true})
@@ -53,7 +53,7 @@ describe('layout_xml_extract', ()=>{
     expect(res.handles[0].blocks.length).toBe(0)
   })
   it('rejects changedFiles escaping workspace root', async ()=>{
-    const { apply } = await import('../src/layout-xml-tool.js')
+    const { apply } = await import('../src/host/layout-xml-tool.js')
     const { r, ctx } = cap(); apply(ctx as never, {})
     const root = await tempDir()
     const res = await r[0].execute({ changedFiles: ['../../etc/passwd'] }, exec(root)) as { text?: string }
@@ -61,7 +61,7 @@ describe('layout_xml_extract', ()=>{
     expect(txt.toLowerCase()).toContain('escapes')
   })
   it('filters by changedFiles allow-list', async ()=>{
-    const { apply } = await import('../src/layout-xml-tool.js')
+    const { apply } = await import('../src/host/layout-xml-tool.js')
     const { r, ctx } = cap(); apply(ctx as never, {})
     const root = await tempDir()
     await mkdir(join(root,'a/layout'),{recursive:true})

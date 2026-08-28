@@ -12,12 +12,12 @@ function exec(cwd:string):unknown{ return {callId:'c', name:'maestro_perf_log_st
 
 describe('maestro_perf_log_stats', ()=>{
   it('registers tool', async ()=>{
-    const {apply}=await import('../src/perf-log-stats-tool.js')
+    const {apply}=await import('../src/host/perf-log-stats-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     expect(r[0].name).toBe('maestro_perf_log_stats')
   })
   it('empty logs returns ok true with warnings', async ()=>{
-    const {apply}=await import('../src/perf-log-stats-tool.js')
+    const {apply}=await import('../src/host/perf-log-stats-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     const root=await tempDir()
     const res=await r[0].execute({}, exec(root)) as {ok:boolean, warnings:string[], slowQueries:unknown[]}
@@ -26,7 +26,7 @@ describe('maestro_perf_log_stats', ()=>{
     expect(res.slowQueries.length).toBe(0)
   })
   it('parses db.log slowQueries and nPlusOne', async ()=>{
-    const {apply}=await import('../src/perf-log-stats-tool.js')
+    const {apply}=await import('../src/host/perf-log-stats-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     const root=await tempDir()
     await mkdir(join(root,'var/debug'),{recursive:true})
@@ -37,7 +37,7 @@ describe('maestro_perf_log_stats', ()=>{
     expect(res.nPlusOneCandidates.some(c=>c.count>=2)).toBe(true)
   })
   it('ignores non-frontend entries (no App\\Http)', async ()=>{
-    const {apply}=await import('../src/perf-log-stats-tool.js')
+    const {apply}=await import('../src/host/perf-log-stats-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     const root=await tempDir()
     await mkdir(join(root,'var/debug'),{recursive:true})
@@ -46,7 +46,7 @@ describe('maestro_perf_log_stats', ()=>{
     expect(res.slowQueries.length).toBe(0)
   })
   it('rejects escaping worktreePath', async ()=>{
-    const {apply}=await import('../src/perf-log-stats-tool.js')
+    const {apply}=await import('../src/host/perf-log-stats-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     const root=await tempDir()
     const res=await r[0].execute({worktreePath:'../../etc'}, exec(root)) as {text?:string}
@@ -54,17 +54,17 @@ describe('maestro_perf_log_stats', ()=>{
     expect(txt.toLowerCase()).toContain('escapes')
   })
   it('strip trailing ERROR', async ()=>{
-    const {cleanJson}=await import('../src/perf-log-stats-tool.js')
+    const {cleanJson}=await import('../src/host/perf-log-stats-tool.js')
     const raw = `{"status":"failed"}  ERROR audit run 20260827T000425Z reported failed checks`
     expect(cleanJson(raw)).toEqual(`{"status":"failed"}`)
   })
   it('strip trailing ERROR with newline', async ()=>{
-    const {cleanJson}=await import('../src/perf-log-stats-tool.js')
+    const {cleanJson}=await import('../src/host/perf-log-stats-tool.js')
     const raw = `{"status":"failed"}\n  ERROR audit run 20260827T000425Z reported failed checks`
     expect(cleanJson(raw)).toEqual(`{"status":"failed"}`)
   })
   it('streaming bounded 2MiB truncates large log', async ()=>{
-    const {apply}=await import('../src/perf-log-stats-tool.js')
+    const {apply}=await import('../src/host/perf-log-stats-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     const root=await tempDir()
     await mkdir(join(root,'var/debug'),{recursive:true})

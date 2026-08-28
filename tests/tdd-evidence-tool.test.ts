@@ -12,12 +12,12 @@ function exec(cwd:string):unknown{ return {callId:'c', name:'maestro_tdd_evidenc
 
 describe('maestro_tdd_evidence', ()=>{
   it('registers tool', async ()=>{
-    const {apply}=await import('../src/tdd-evidence-tool.js')
+    const {apply}=await import('../src/host/tdd-evidence-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     expect(r[0].name).toBe('maestro_tdd_evidence')
   })
   it('red op captures failing test evidence', async ()=>{
-    const {apply}=await import('../src/tdd-evidence-tool.js')
+    const {apply}=await import('../src/host/tdd-evidence-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     const root=await tempDir()
     await mkdir(join(root,'tests'),{recursive:true})
@@ -27,7 +27,7 @@ describe('maestro_tdd_evidence', ()=>{
     expect(res.phase).toBe('red')
   })
   it('green op requires prior red', async ()=>{
-    const {apply}=await import('../src/tdd-evidence-tool.js')
+    const {apply}=await import('../src/host/tdd-evidence-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     const root=await tempDir()
     const res=await r[0].execute({op:'green', testFile:'tests/green.test.ts'}, exec(root)) as {ok:boolean, error?:string}
@@ -35,7 +35,7 @@ describe('maestro_tdd_evidence', ()=>{
     expect(res.error).toContain('red')
   })
   it('verify op checks pnpm verify output', async ()=>{
-    const {apply}=await import('../src/tdd-evidence-tool.js')
+    const {apply}=await import('../src/host/tdd-evidence-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     const root=await tempDir()
     await writeFile(join(root,'package.json'), JSON.stringify({name:'x', version:'0.0.0'}))
@@ -43,7 +43,7 @@ describe('maestro_tdd_evidence', ()=>{
     expect(typeof res.ok).toBe('boolean')
   })
   it('rejects escaping testFile', async ()=>{
-    const {apply}=await import('../src/tdd-evidence-tool.js')
+    const {apply}=await import('../src/host/tdd-evidence-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     const root=await tempDir()
     const res=await r[0].execute({op:'red', testFile:'../../etc/passwd'}, exec(root)) as {text?:string}

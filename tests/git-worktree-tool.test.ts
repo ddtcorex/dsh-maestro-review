@@ -12,12 +12,12 @@ function exec(cwd:string):unknown{ return {callId:'c', name:'git_worktree', argu
 
 describe('git_worktree', ()=>{
   it('registers git_worktree with op discriminator', async ()=>{
-    const {apply}=await import('../src/git-worktree-tool.js')
+    const {apply}=await import('../src/host/git-worktree-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     expect(r[0].name).toBe('git_worktree')
   })
   it('inspect non-worktree returns exists false and isWorktree false', async ()=>{
-    const {apply}=await import('../src/git-worktree-tool.js')
+    const {apply}=await import('../src/host/git-worktree-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     const root=await tempDir()
     const res=await r[0].execute({op:'inspect', worktreePath: root}, exec(root)) as {op:string, exists:boolean, isWorktree:boolean}
@@ -26,7 +26,7 @@ describe('git_worktree', ()=>{
     expect(res.isWorktree).toBe(false)
   })
   it('create rejects branch injection', async ()=>{
-    const {apply}=await import('../src/git-worktree-tool.js')
+    const {apply}=await import('../src/host/git-worktree-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     const root=await tempDir()
     const res=await r[0].execute({op:'create', worktreePath: join(root,'.worktrees/a'), branch:'--upload-pack=touch /tmp/pwn'}, exec(root)) as {text?:string, isError?:boolean}
@@ -34,7 +34,7 @@ describe('git_worktree', ()=>{
     expect(txt.toLowerCase()).toContain('branch')
   })
   it('create rejects when .worktrees not ignored', async ()=>{
-    const {apply}=await import('../src/git-worktree-tool.js')
+    const {apply}=await import('../src/host/git-worktree-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     const root=await tempDir()
     // init git repo without .gitignore
@@ -48,7 +48,7 @@ describe('git_worktree', ()=>{
     expect(res.reason).toContain('ignored')
   })
   it('remove rejects escaping worktreePath', async ()=>{
-    const {apply}=await import('../src/git-worktree-tool.js')
+    const {apply}=await import('../src/host/git-worktree-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     const root=await tempDir()
     const res=await r[0].execute({op:'remove', worktreePath:'../../etc'}, exec(root)) as {text?:string}

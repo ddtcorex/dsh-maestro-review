@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { apply, MAESTRO_ENDPOINTS } from '../src/settings-rpc.ts';
+import { apply, MAESTRO_ENDPOINTS } from '../src/host/settings-rpc.ts';
 
 let home: string;
 let previousDshHome: string | undefined;

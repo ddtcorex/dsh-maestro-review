@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { REVIEW_PROFILE_SKILLS, MAESTRO_SKILLS_INSTALL_COMMAND } from '../src/skills-tool.js'
+import { REVIEW_PROFILE_SKILLS, MAESTRO_SKILLS_INSTALL_COMMAND } from '../src/host/skills-tool.js'
 
 describe('magento2 review skill profile', () => {
   it('loads the frontend/hyva skills alongside the backend passes', () => {

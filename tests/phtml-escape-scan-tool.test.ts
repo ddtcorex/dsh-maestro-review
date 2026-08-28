@@ -12,7 +12,7 @@ function exec(cwd:string):unknown{ return {callId:'c',name:'phtml_escape_scan',a
 
 describe('phtml_escape_scan', ()=>{
   it('flags unescaped echo high', async ()=>{
-    const {apply}=await import('../src/phtml-escape-scan-tool.js')
+    const {apply}=await import('../src/host/phtml-escape-scan-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{}); expect(r[0].name).toBe('phtml_escape_scan')
     const root=await tempDir()
     await writeFile(join(root,'a.phtml'),'<?= $var ?>\n')
@@ -20,7 +20,7 @@ describe('phtml_escape_scan', ()=>{
     expect(res.findings.some(f=>f.type==='unescaped-echo' && f.confidence==='high')).toBe(true)
   })
   it('accepts escapeHtml as safe', async ()=>{
-    const {apply}=await import('../src/phtml-escape-scan-tool.js')
+    const {apply}=await import('../src/host/phtml-escape-scan-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     const root=await tempDir()
     await writeFile(join(root,'b.phtml'),'<?= $escaper->escapeHtml($var) ?>\n<?= $block->escapeHtml($x) ?>\n')
@@ -28,7 +28,7 @@ describe('phtml_escape_scan', ()=>{
     expect(res.findings.length).toBe(0)
   })
   it('flags unescaped attr vs escapeHtmlAttr', async ()=>{
-    const {apply}=await import('../src/phtml-escape-scan-tool.js')
+    const {apply}=await import('../src/host/phtml-escape-scan-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     const root=await tempDir()
     await writeFile(join(root,'c.phtml'),'<div title="<?= $title ?>"></div>\n<div title="<?= $escaper->escapeHtmlAttr($title) ?>"></div>\n')
@@ -37,7 +37,7 @@ describe('phtml_escape_scan', ()=>{
     expect(res.findings.length).toBe(1)
   })
   it('flags superglobal', async ()=>{
-    const {apply}=await import('../src/phtml-escape-scan-tool.js')
+    const {apply}=await import('../src/host/phtml-escape-scan-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     const root=await tempDir()
     await writeFile(join(root,'d.phtml'),'<?php echo $_GET["id"]; ?>\n')
@@ -45,7 +45,7 @@ describe('phtml_escape_scan', ()=>{
     expect(res.findings.some(f=>f.type==='direct-superglobal')).toBe(true)
   })
   it('scope paths filter and escape guard', async ()=>{
-    const {apply}=await import('../src/phtml-escape-scan-tool.js')
+    const {apply}=await import('../src/host/phtml-escape-scan-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     const root=await tempDir()
     await writeFile(join(root,'e.phtml'),'<?= $a ?>\n')

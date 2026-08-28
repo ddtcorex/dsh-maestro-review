@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { postReviewFindings } from '../src/orchestrator.js'
+import { postReviewFindings } from '../src/host/orchestrator.js'
 
 describe('orchestrator', () => {
   it('exports orchestrator with provider integration', async () => {
-    const mod = await import('../src/orchestrator.js')
+    const mod = await import('../src/host/orchestrator.js')
     expect(mod).toBeDefined()
     // Should export either apply or runReviewWithProvider or gitlabProvider re-export
     expect(mod.gitlabProvider !== undefined || mod.runReviewWithProvider !== undefined || typeof mod.apply === 'function').toBe(true)
@@ -12,17 +12,21 @@ describe('orchestrator', () => {
   it('orchestrator imports ReviewProvider types', async () => {
     const fs = await import('node:fs')
     let text: string
-    try {
-      text = fs.readFileSync('packages/dsh-maestro-review/src/orchestrator.ts', 'utf8')
-    } catch {
-      text = fs.readFileSync('src/orchestrator.ts', 'utf8')
+    const candidates = [
+      'packages/dsh-maestro-review/src/host/orchestrator.ts',
+      'packages/dsh-maestro-review/src/orchestrator.ts',
+      'src/host/orchestrator.ts',
+      'src/orchestrator.ts',
+    ]
+    for (const c of candidates) {
+      try { text = fs.readFileSync(c, 'utf8'); break; } catch {}
     }
-    expect(text).toContain('ReviewProvider')
+    expect(text!).toContain('ReviewProvider')
   })
 
   it('review provider pluggability: gitlab vs github', async () => {
-    const { gitlabProvider } = await import('../src/providers/gitlab.js')
-    const { githubProvider } = await import('../src/providers/github.stub.js')
+    const { gitlabProvider } = await import('../src/host/providers/gitlab.js')
+    const { githubProvider } = await import('../src/host/providers/github.stub.js')
     expect(gitlabProvider.id).not.toBe(githubProvider.id)
   })
 })

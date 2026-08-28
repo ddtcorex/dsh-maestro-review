@@ -3,8 +3,8 @@ import {
   deniedToolForReview,
   createReviewToolPolicyHandler,
   REVIEW_DENIED_TOOLS,
-} from '../src/tool-policy.js'
-import * as policyPlugin from '../src/tool-policy.js'
+} from '../src/host/tool-policy.js'
+import * as policyPlugin from '../src/host/tool-policy.js'
 
 describe('review tool policy', () => {
   it('denies exactly the leaked host tools with an explanatory reason', () => {

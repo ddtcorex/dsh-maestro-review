@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { pinRotationText, reviewDigestText } from '../src/notify.ts'
+import { pinRotationText, reviewDigestText } from '../src/host/notify.ts'
 
 describe('notify text builders', () => {
   it('renders the review digest outcome line with an optional summary', () => {
