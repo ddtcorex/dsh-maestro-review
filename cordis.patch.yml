@@ -5,7 +5,6 @@
     - id: maestro-review-webhook
       name: '@ddtcorex/dsh-maestro-review/lib/providers/gitlab.js'
       config:
-        port: 3000
         secret: !!js process.env.MAESTRO_GITLAB_WEBHOOK_SECRET
         botUsername: maestro-bot
     - id: maestro-review-orchestrator

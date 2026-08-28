@@ -1,4 +1,4 @@
-import { createServer, type IncomingMessage } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { loadUserConfig } from '../config-store.js'
@@ -8,15 +8,13 @@ import { routeGitlabReviewRequest } from '../review-intake.js'
 import type { ReviewProvider, ReviewRequest } from './interface.js'
 
 export const name = 'maestro-review-webhook'
+export const inject = ['webServer'] as const
 
 export interface Config {
-  port: number
   botUsername?: string
   secret?: string
 }
-
 export const Config: z<Config> = z.object({
-  port: z.natural().max(65535).required(),
   botUsername: z.string(),
   secret: z.string().role('secret'),
 })
@@ -108,83 +106,37 @@ export function apply(ctx: Context, config: Config): void {
     const userConfig = await loadUserConfig()
     const expected = userConfig.webhookSecret ?? config.secret
     if (expected === undefined) {
-      if (!warnedUnconfigured) {
-        warnedUnconfigured = true
-        console.error('maestro-review-webhook: no webhook secret configured — set one in Maestro Settings or MAESTRO_GITLAB_WEBHOOK_SECRET; rejecting all requests until then')
-      }
+      if (!warnedUnconfigured) { warnedUnconfigured = true; console.error('maestro-review-webhook: no webhook secret configured — set one in Maestro Settings or MAESTRO_GITLAB_WEBHOOK_SECRET; rejecting all requests until then') }
       return false
     }
     return secretsMatch(headerValue, expected)
   }
-
-  const server = createServer((req, res) => {
-    if (req.method !== 'POST') {
-      res.writeHead(404).end()
-      return
-    }
-    void requestAuthorized(req.headers['x-gitlab-token']).then(async (authorized) => {
-      if (!authorized) {
-        res.writeHead(401).end()
-        return
-      }
-      readBody(req).then(async (raw) => {
-        if (raw === undefined) {
-          res.writeHead(413).end()
-          return
+  function makeHandler(expectedPath: string) {
+    return (req: IncomingMessage, res: ServerResponse) => {
+      if (req.method !== 'POST') { res.writeHead(404).end(); return }
+      if (req.url !== expectedPath) { res.writeHead(404).end(); return }
+      void requestAuthorized(req.headers['x-gitlab-token']).then(async (authorized) => {
+        if (!authorized) { res.writeHead(401).end(); return }
+        const raw = await readBody(req)
+        if (raw === undefined) { res.writeHead(413).end(); return }
+        if (expectedPath === '/hooks/gitlab-mr/trigger') {
+          let parsed: unknown; try { parsed = JSON.parse(raw) } catch { res.writeHead(400).end(); return }
+          if (!isValidMrOpenedPayload(parsed)) { res.writeHead(400).end(); return }
+          const request: OrchestratorReviewRequest = { ...(parsed as any), trigger: 'mention', mode: 'quick', scope: { kind: 'mr' } }
+          ctx.emit('maestro/review-request', request); res.writeHead(200).end(); return
         }
-        if (req.url === '/hooks/gitlab-mr/trigger') {
-          let parsed: unknown
-          try {
-            parsed = JSON.parse(raw)
-          } catch {
-            res.writeHead(400).end()
-            return
-          }
-          if (!isValidMrOpenedPayload(parsed)) {
-            res.writeHead(400).end()
-            return
-          }
-          const request: OrchestratorReviewRequest = {
-            ...parsed,
-            trigger: 'mention',
-            mode: 'quick',
-            scope: { kind: 'mr' },
-          }
-          ctx.emit('maestro/review-request', request)
-          res.writeHead(200).end()
-          return
-        }
-
-        if (req.url !== '/hooks/gitlab-mr') {
-          res.writeHead(404).end()
-          return
-        }
-        let body: GitlabMrWebhookBody
-        try {
-          body = JSON.parse(raw)
-        } catch {
-          res.writeHead(400).end()
-          return
-        }
+        let body: GitlabMrWebhookBody; try { body = JSON.parse(raw) } catch { res.writeHead(400).end(); return }
         const userConfig = await loadUserConfig()
-        if ((body.object_kind === 'merge_request' || body.object_kind === 'note') && !hasValidGitlabMrIdentity(body)) {
-          res.writeHead(400).end()
-          return
-        }
-        const request = routeGitlabReviewRequest(
-          body,
-          userConfig.botUsername ?? config.botUsername ?? 'maestro',
-          { pushEnabled: userConfig.autoRereviewOnPush === true },
-        )
+        if ((body.object_kind === 'merge_request' || body.object_kind === 'note') && !hasValidGitlabMrIdentity(body)) { res.writeHead(400).end(); return }
+        const request = routeGitlabReviewRequest(body, userConfig.botUsername ?? config.botUsername ?? 'maestro', { pushEnabled: userConfig.autoRereviewOnPush === true })
         if (request !== undefined) ctx.emit('maestro/review-request', request)
         res.writeHead(200).end()
       })
-    })
-  })
-
-  server.listen(config.port)
-
-  ctx.effect(() => async () => {
-    await new Promise<void>((resolve) => { server.close(() => resolve()) })
-  }, 'gitlab-webhook teardown')
+    }
+  }
+  const h1 = makeHandler('/hooks/gitlab-mr')
+  const h2 = makeHandler('/hooks/gitlab-mr/trigger')
+  const dispose1 = (ctx as any).webServer.register({ kind: 'exact', path: '/hooks/gitlab-mr', handler: h1 })
+  const dispose2 = (ctx as any).webServer.register({ kind: 'exact', path: '/hooks/gitlab-mr/trigger', handler: h2 })
+  ctx.effect(() => () => { dispose1(); dispose2() }, 'gitlab-webhook teardown')
 }
