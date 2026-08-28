@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-08-28
+
+### Fixed
+
+- **Govard audit lint schema** — add `errors`/`diagnostics`/`sessionId`/`runId` to `govard_audit_lint` output and normalize `exitCode`/`rawJson` (`124` timeout, `127` not_found, `1` parse_error, `0` success) to prevent `INVALID_TOOL_OUTPUT` after long runs (#38).
+- **Inline posting fallback** — `postReviewFindings` falls back to MR note `**Inline fallback — \`path:line\` line is not in current MR diff**` when `diffPositionForNewLine` is undefined; preserves throw for file-not-in-diff and collapsed diff (#38).
+- **Stale running auto-fail** — `failStaleRunning` marks `running` >2h as `failed` via `recordReviewStart`/`pruneHistory` to avoid leaked running after host restart (#38).
+
+### Verified
+
+- `pnpm verify` clean, `pnpm test` 92/92, `pnpm build` markers, live MR `!28` (0+Failed) → `!29` (1 inline 0 failed) on visiterlyon `2columns.phtml:22`.
+
 ## [0.1.1] - 2026-08-28
 
 Patch release to unblock publishing and carry forward DSH 0.1.2 compatibility.
@@ -62,5 +74,6 @@ ReviewProvider + orchestrator for automated MR review in DeepSeek Harness.
   `maestro-review-settings-rpc` (`/dsh-maestro-review` channel).
 - **Client half** — settings section rendered into DSH Web slots.
 
+[0.1.2]: https://github.com/ddtcorex/dsh-maestro-review/releases/tag/v0.1.2
 [0.1.1]: https://github.com/ddtcorex/dsh-maestro-review/releases/tag/v0.1.1
 [0.1.0]: https://github.com/ddtcorex/dsh-maestro-review/releases/tag/v0.1.0
