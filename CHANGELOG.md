@@ -14,7 +14,7 @@ All notable changes to this project are documented in this file. Format follows
 
 ### Verified
 
-- `pnpm verify` clean, `pnpm test` 92/92, `pnpm build` markers, live MR `!28` (0+Failed) → `!29` (1 inline 0 failed) on visiterlyon `2columns.phtml:22`.
+- `pnpm verify` clean, `pnpm test` 92/92, `pnpm build` markers, live MR `!28` (0+Failed) → `!29` (1 inline 0 failed) on example-project `2columns.phtml:22`.
 
 ## [0.1.1] - 2026-08-28
 
