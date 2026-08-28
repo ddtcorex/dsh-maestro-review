@@ -2,8 +2,8 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { buildIncrementalBlock, type CompareResult } from '../src/incremental.js'
-import { recordReviewStart, recordReviewFinish, lastCompletedReview } from '../src/review-history.js'
+import { buildIncrementalBlock, type CompareResult } from '../src/host/incremental.js'
+import { recordReviewStart, recordReviewFinish, lastCompletedReview } from '../src/host/review-history.js'
 
 const cleanup: string[] = []
 async function tempHome(): Promise<string> {

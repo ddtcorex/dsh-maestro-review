@@ -1,4 +1,6 @@
 # dsh-maestro-review bundle patch — 3 rows as spec §4
+# RPC channel: /dsh-maestro-review (loopback, see src/index.ts + src/settings-rpc.ts)
+# channel: /dsh-maestro-review
 - insert:
     - id: maestro-review-webhook
       name: '@ddtcorex/dsh-maestro-review/lib/providers/gitlab.js'

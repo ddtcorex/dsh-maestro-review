@@ -5,7 +5,7 @@
     "moduleResolution": "NodeNext",
     "declaration": true,
     "outDir": "lib",
-    "rootDir": "src",
+    "rootDir": "src/host",
     "strict": true,
     "noImplicitAny": false,
     "esModuleInterop": true,
@@ -14,11 +14,20 @@
     "declarationMap": true,
     "sourceMap": true,
     "noEmitOnError": true,
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true,
     "verbatimModuleSyntax": false
   },
-  "include": ["src/**/*"],
-  "exclude": ["lib", "node_modules", "client", "tests"]
+  "include": [
+    "src/host/**/*.ts"
+  ],
+  "exclude": [
+    "lib",
+    "node_modules",
+    "client",
+    "tests"
+  ]
 }

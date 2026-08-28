@@ -16,7 +16,7 @@ function exec(cwd: string): unknown { return { callId: 'c', name: 'hyva_csp_scan
 
 describe('hyva_csp_scan', () => {
   it('flags unregistered inline script without $hyvaCsp->registerInlineScript', async () => {
-    const { apply } = await import('../src/hyva-csp-scan-tool.js')
+    const { apply } = await import('../src/host/hyva-csp-scan-tool.js')
     const { r, ctx } = capture()
     apply(ctx as never, {})
     expect(r[0].name).toBe('hyva_csp_scan')
@@ -27,7 +27,7 @@ describe('hyva_csp_scan', () => {
     expect(res.clean).toBe(false)
   })
   it('passes when file contains $hyvaCsp->registerInlineScript', async () => {
-    const { apply } = await import('../src/hyva-csp-scan-tool.js')
+    const { apply } = await import('../src/host/hyva-csp-scan-tool.js')
     const { r, ctx } = capture()
     apply(ctx as never, {})
     const root = await tempDir()
@@ -36,7 +36,7 @@ describe('hyva_csp_scan', () => {
     expect(res.issues.filter((i) => i.type === 'unregistered-inline-script').length).toBe(0)
   })
   it('flags x-model on CSP build as warn (x-model-on-csp-build) but clean remains true if only that', async () => {
-    const { apply } = await import('../src/hyva-csp-scan-tool.js')
+    const { apply } = await import('../src/host/hyva-csp-scan-tool.js')
     const { r, ctx } = capture()
     apply(ctx as never, {})
     const root = await tempDir()
@@ -49,7 +49,7 @@ describe('hyva_csp_scan', () => {
     expect(res.clean).toBe(true)
   })
   it('flags Alpine expression with operators as expression-in-directive', async () => {
-    const { apply } = await import('../src/hyva-csp-scan-tool.js')
+    const { apply } = await import('../src/host/hyva-csp-scan-tool.js')
     const { r, ctx } = capture()
     apply(ctx as never, {})
     const root = await tempDir()

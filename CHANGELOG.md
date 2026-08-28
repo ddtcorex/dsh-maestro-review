@@ -1,0 +1,66 @@
+# Changelog
+
+All notable changes to this project are documented in this file. Format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.1.1] - 2026-08-28
+
+Patch release to unblock publishing and carry forward DSH 0.1.2 compatibility.
+
+### Fixed
+
+- **Publishable `config-lib` dependency** — switched `workspace:^` to `npm ^0.1.1` for the
+  tagged release (`fix(review): use npm ^0.1.1 for config-lib to unblock release #34`)
+  and restored the workspace dep on `master` afterwards (`chore(review): restore workspace
+  dep for config-lib after 0.1.1 release #35`).
+- **DSH 0.1.2 compat** — migrated `apiproxy` row to `client-connection`
+  (`chore: migrate apiproxy to client-connection for DSH 0.1.2 compat #36`).
+- **Supervisor model** — accept `supervisorModel` in settings save / bump to 0.1.1
+  (`feat(review): accept supervisorModel in settings save #32`, `chore(dsh-maestro-review):
+  bump to 0.1.1 for supervisorModel #33`).
+- **Reasoning effort fallback** — handle unsupported `reasoningEffort` with fallback
+  and clearer error (`fix(review): handle unsupported reasoningEffort #31`).
+
+### Changed
+
+- CI now unified via reusable `ddtcorex/dsh-maestro-ci` workflows
+  (`ci: unify release via reusable node-release #30`, `node-plugin.yml@22511d64e`).
+
+## [0.1.0] - 2026-08-25
+
+Initial public release of `@ddtcorex/dsh-maestro-review` — pluggable
+ReviewProvider + orchestrator for automated MR review in DeepSeek Harness.
+
+### Added
+
+- **ReviewProvider abstraction** (`src/providers/interface.ts`) — pluggable contract;
+  GitLab provider (`src/providers/gitlab.ts`) with live MR fetch/comment, GitHub
+  stub (`src/providers/github.stub.ts`).
+- **Orchestrator** (`src/orchestrator.ts`) — reviewer + auditor child agents on
+  disposable worktrees, model selection overridable globally (`reviewModel`) and
+  per-project, dedup + retention.
+- **Webhook intake** (`src/gitlab-webhook.ts`, row `maestro-review-webhook`) and
+  review intake/findings/history/signals
+  (`src/review-intake.ts`, `src/review-findings-tool.ts`, `src/review-history.ts`,
+  `src/review-signals.ts`) — findings written only via the `review-findings` tool
+  by tool-only presets, never free text.
+- **Settings & auth** (`src/settings-rpc.ts`, `src/config-store.ts`, `src/pin-store.ts`,
+  `src/secure-compare.ts`) — shared namespaced settings store
+  (`~/.dsh/maestro/settings.json` via `@ddtcorex/dsh-maestro-config-lib`), PIN auth
+  with constant-time compare.
+- **Govard / workspace / skills tooling** (`src/govard-tool.ts`, `src/workspace-tool.ts`,
+  `src/skills-tool.ts`, `src/notify.ts`) — Govard audit + workspace file access
+  inside review runs; notifier texts via optional `maestroNotifier` service.
+- **Deterministic review gates** — `hyva_csp_scan` (#19), `layout_xml_extract` (#20),
+  `magento_module_check` (#21), `phtml_escape_scan` (#22), `maestro_review_scope_split`
+  (#23), `govard_audit_lint` alias (#24), `maestro_perf_log_stats` (#25),
+  `git_worktree {inspect|create|remove}` (#26), `maestro_plan_track` + `maestro_tdd_evidence`
+  (#27), streaming perf log + trailing-error strip (#28/#29), incremental re-review
+  context for push-heavy MRs (#17).
+- **Cordis rows** via `cordis.patch.yml` — `maestro-review-webhook`, `maestro-review-orchestrator`,
+  `maestro-review-settings-rpc` (`/dsh-maestro-review` channel).
+- **Client half** — settings section rendered into DSH Web slots.
+
+[0.1.1]: https://github.com/ddtcorex/dsh-maestro-review/releases/tag/v0.1.1
+[0.1.0]: https://github.com/ddtcorex/dsh-maestro-review/releases/tag/v0.1.0

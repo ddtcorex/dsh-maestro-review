@@ -12,12 +12,12 @@ function exec(cwd:string):unknown{ return {callId:'c', name:'govard_audit_lint',
 
 describe('govard_audit_lint alias', ()=>{
   it('registers govard_audit_lint', async ()=>{
-    const {apply}=await import('../src/govard-audit-lint-tool.js')
+    const {apply}=await import('../src/host/govard-audit-lint-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     expect(r[0].name).toBe('govard_audit_lint')
   })
   it('rejects escaping worktreePath', async ()=>{
-    const {apply}=await import('../src/govard-audit-lint-tool.js')
+    const {apply}=await import('../src/host/govard-audit-lint-tool.js')
     const {r,ctx}=cap(); apply(ctx as never,{})
     const root=await tempDir()
     const res=await r[0].execute({worktreePath:'../../etc'}, exec(root)) as {text?:string}
