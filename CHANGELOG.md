@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-08-30
+
+### Fixed
+
+- **Publishable config-lib dep for 0.2.0** — release `0.2.0` failed (`Cannot find module '@ddtcorex/dsh-maestro-config-lib'`) because tagged manifest kept `workspace:^0.1.1` instead of `npm ^0.1.2`; fix to `^0.1.2` with regenerated `pnpm-lock.yaml` (`0.0.0 → 0.1.2`).
+
 ## [0.2.0] - 2026-08-30
 
 ### Added
