@@ -101,7 +101,7 @@ export function apply(ctx:Context, config:{rootPath?:string}={}):void{
         if(await exists(worktreePath)){
           return {op:'create', created:false, worktreePath, branch, headSha:'', alreadyExisted:true, reason:'already exists'} as never
         }
-        const res=await runGit(root, ['worktree','add','--', worktreePath,'-b', branch, base])
+        const res=await runGit(root, ['worktree','add','-b', branch,'--', worktreePath, base])
         if(res.code!==0){
           if(res.stderr.includes('permission denied') || res.stderr.includes('EACCES')){
             return {op:'create', created:false, worktreePath, branch, headSha:'', alreadyExisted:false, reason:'blocked by sandbox — working in place'} as never
