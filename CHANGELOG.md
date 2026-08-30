@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-08-30
+
+### Added
+
+- **Review profiles for 4 frameworks** — extend `REVIEW_PROFILE_SKILLS` with `laravel` (`govard-toolbox` + `govard-laravel` + `php-dev-core`), `symfony` (`govard-toolbox` + `govard-symfony` + `php-dev-core`), `wordpress` (`govard-toolbox` + `govard-wordpress` + `php-dev-core`) alongside existing `magento2` (9 skills) and `generic`. Sync `MAESTRO_SKILLS_INSTALL_COMMAND` union (13 skills) and `orchestrator Config.reviewProfile` schema; `maestro_load_review_profile` now advertises all 5 profiles. Fixes WP/Laravel/Symfony MRs falling back to `generic` with no skills.
+
+### Changed
+
+- **Govard audit lint — framework-aware timeout** — `govard_audit_lint` defaults `DEFAULT_TIMEOUT 120s→900s (15m)`, extends `timeoutMs` range `300s→30m (1_800_000)`, and forwards `govard audit run --timeout auto (90s-30m, 22.5m for wordpress/magento2)` + `--lint-provider govard` + `--mode`/`--scope`/`--php`/`--no-lint-result-cache` passthrough. Prevents watchdog `cancelled` on large `wordpress 282M 509s` / `magento2 1.3M 19m` runs with `govard 1.67` image `84f9097`.
+
+### Fixed
+
+- **Branch-not-found fallback test** — `ensureWorktree` now throws `BRANCH_NOT_FOUND` on `couldn't find remote ref` so `failStaleRunning` can distinguish missing branch vs infra; add `isBranchNotFoundError` helper.
+
 ## [0.1.2] - 2026-08-28
 
 ### Fixed

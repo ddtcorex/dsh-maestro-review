@@ -5,7 +5,7 @@ import type {} from '@deepseek-ai/dsh-agent'
 export const name = 'maestro-skills-tool'
 export const inject = ['skills', 'tools']
 
-export type ReviewSkillProfile = 'magento2' | 'generic'
+export type ReviewSkillProfile = 'magento2' | 'laravel' | 'symfony' | 'wordpress' | 'generic'
 
 /**
  * Exact skill names rather than a fuzzy search: a review must not silently
@@ -25,11 +25,26 @@ export const REVIEW_PROFILE_SKILLS: Record<ReviewSkillProfile, readonly string[]
     'magento2-security-scan',
     'magento2-performance-audit',
   ],
+  laravel: [
+    'govard-toolbox',
+    'govard-laravel',
+    'php-dev-core',
+  ],
+  symfony: [
+    'govard-toolbox',
+    'govard-symfony',
+    'php-dev-core',
+  ],
+  wordpress: [
+    'govard-toolbox',
+    'govard-wordpress',
+    'php-dev-core',
+  ],
   /** Diff review against general best practices; no project skill set required. */
   generic: [],
 }
 
-export const MAESTRO_SKILLS_INSTALL_COMMAND = 'curl -fsSL https://raw.githubusercontent.com/ddtcorex/maestro-skills/master/install.sh | bash -s -- --scope personal --target dsh --skills govard-toolbox,govard-magento,magento2-dev-core,magento2-frontend-dev,magento2-hyva-dev,magento2-code-review,magento2-linter,magento2-security-scan,magento2-performance-audit -y'
+export const MAESTRO_SKILLS_INSTALL_COMMAND = 'curl -fsSL https://raw.githubusercontent.com/ddtcorex/maestro-skills/master/install.sh | bash -s -- --scope personal --target dsh --skills govard-toolbox,govard-magento,govard-laravel,govard-symfony,govard-wordpress,php-dev-core,magento2-dev-core,magento2-frontend-dev,magento2-hyva-dev,magento2-code-review,magento2-linter,magento2-security-scan,magento2-performance-audit -y'
 
 // This is deliberately process-local and keyed by the reviewer Agent object,
 // which every Cordis child context inherits. Preset mounting inserts child
@@ -139,7 +154,7 @@ export function apply(ctx: Context): void {
     name: 'maestro_load_review_profile',
     description: 'Load the complete, exact skill set required for a configured review profile. Fails if any required skill is unavailable.',
     parameters: {
-      profile: { type: 'string', required: true, description: 'Review profile configured for the project. Supported: "magento2" (full Magento skill set), "generic" (no skills required).' },
+      profile: { type: 'string', required: true, description: 'Review profile configured for the project. Supported: "magento2" (full Magento skill set), "laravel" (Govard Laravel + PHP), "symfony" (Govard Symfony + PHP), "wordpress" (Govard WordPress + PHP), "generic" (no skills required).' },
     },
     output: {
       schema: {
