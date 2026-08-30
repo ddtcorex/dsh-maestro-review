@@ -146,7 +146,7 @@ export const Config: z<Config> = z.object({
   projectMappings: z.array(z.object({
     projectPath: z.string().required(),
     localRepoPath: z.string().required(),
-    reviewProfile: z.union([z.const('magento2'), z.const('generic')]).default('magento2'),
+    reviewProfile: z.union([z.const('magento2'), z.const('laravel'), z.const('symfony'), z.const('wordpress'), z.const('generic')]).default('magento2'),
   })).required(),
   gitlabBaseUrl: z.string().required(),
   gitlabToken: z.string().role('secret'),
@@ -497,6 +497,21 @@ function assertSafeBranchName(sourceBranch: string): void {
   }
 }
 
+export function isBranchNotFoundError(err: unknown): boolean {
+  const rawStderr = (err as { stderr?: unknown })?.stderr
+  const rawMsg = (err as { message?: unknown })?.message
+  const toText = (v: unknown): string => {
+    if (typeof v === 'string') return v
+    if (v instanceof Uint8Array || (typeof Buffer !== 'undefined' && Buffer.isBuffer(v as unknown))) return Buffer.from(v as Uint8Array).toString('utf8')
+    if (typeof v === 'object' && v !== null && 'toString' in v) try { return String(v) } catch {}
+    return ''
+  }
+  const stderrText = toText(rawStderr)
+  const msgText = toText(rawMsg)
+  const text = stderrText !== '' ? stderrText : msgText !== '' ? msgText : String(err ?? '')
+  return text.includes("couldn't find remote ref") || text.includes('could not find remote branch') || text.includes('unknown revision or path')
+}
+
 /**
  * Keep a Govard audit worktree isolated from the developer's primary checkout.
  * Without this local override, both checkouts inherit the same `project_name`
@@ -510,7 +525,17 @@ export function govardWorktreeOverride(projectId: number, mrIid: number, keySuff
 export async function ensureWorktree(localRepoPath: string, sourceBranch: string, projectId: number, mrIid: number, keySuffix?: string): Promise<string> {
   assertSafeBranchName(sourceBranch)
   const worktreePath = join('/tmp', `maestro-mr-${projectId}-${mrIid}${keySuffix === undefined ? '' : `-${keySuffix}`}`)
-  await execFileAsync('git', ['fetch', '--', 'origin', sourceBranch], { cwd: localRepoPath, timeout: GIT_TIMEOUT_MS })
+  try {
+    await execFileAsync('git', ['fetch', '--', 'origin', sourceBranch], { cwd: localRepoPath, timeout: GIT_TIMEOUT_MS })
+  } catch (err) {
+    if (isBranchNotFoundError(err)) {
+      const e = new Error(`branch not found on origin: ${sourceBranch}`)
+      ;(e as unknown as { code: string }).code = 'BRANCH_NOT_FOUND'
+      ;(e as unknown as { cause: unknown }).cause = err
+      throw e
+    }
+    throw err
+  }
   // A host restart can interrupt an active review before its `finally` cleanup.
   // Recover only this deterministic Maestro-owned path so the next delivery can
   // retry; an unrelated worktree is never targeted.
@@ -831,16 +856,36 @@ export function apply(ctx: Context, config: Config): void {
           await signals?.finish('completed')
           return
         }
-        const fullBody = await runReviewAndAudit(payload, {
-          localRepoPath: mapping.localRepoPath,
-          ensureWorktree,
-          removeWorktree,
-          runReviewer: (worktreePath, p) => runReviewer(worktreePath, p, resolved, mapping.reviewProfile ?? 'magento2', reviewModelSelection, incrementalBlock),
-          runAuditor: (worktreePath, p) => runAuditor(worktreePath, p, resolved, reviewModelSelection),
-          postComment,
-          replyToDiscussion,
-          writeFailedReport,
-        })
+        let fullBody: string
+        try {
+          fullBody = await runReviewAndAudit(payload, {
+            localRepoPath: mapping.localRepoPath,
+            ensureWorktree,
+            removeWorktree,
+            runReviewer: (worktreePath, p) => runReviewer(worktreePath, p, resolved, mapping.reviewProfile ?? 'magento2', reviewModelSelection, incrementalBlock),
+            runAuditor: (worktreePath, p) => runAuditor(worktreePath, p, resolved, reviewModelSelection),
+            postComment,
+            replyToDiscussion,
+            writeFailedReport,
+          })
+        } catch (err) {
+          const isBranchNotFound = (err as { code?: string })?.code === 'BRANCH_NOT_FOUND' || isBranchNotFoundError(err)
+          if (isBranchNotFound) {
+            const diffBody = await runDiffOnlyReview(payload, {
+              runReviewer: (p) => runReviewer(undefined, p, resolved, undefined, reviewModelSelection, incrementalBlock),
+              postComment,
+              replyToDiscussion,
+              writeFailedReport,
+            })
+            const summary = summarize(diffBody)
+            const branchNote = `fallback diff-only: branch ${payload.sourceBranch} not found on origin — ${summary ?? ''}`.trim()
+            await recordReviewFinish(historyId, { status: 'completed', summary: branchNote })
+            notifyTelegram('completed', branchNote)
+            await signals?.finish('completed')
+            return
+          }
+          throw err
+        }
         await recordReviewFinish(historyId, { status: 'completed', summary: summarize(fullBody) })
         notifyTelegram('completed', summarize(fullBody))
         await signals?.finish('completed')

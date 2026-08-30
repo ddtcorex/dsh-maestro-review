@@ -40,7 +40,9 @@ async function isInsideRoot(r:string,t:string):Promise<boolean>{
 export function cleanJson(raw:string):string{
   return raw.replace(/\n\s*ERROR audit run.*$/s, '').replace(/\s{2,}ERROR audit run.*$/s, '').trimEnd()
 }
-const DEFAULT_TIMEOUT=120000
+// Govard 1.67 auto timeout: 90s-30m framework-aware (15m floor for wordpress/magento2 → 22.5m auto)
+// Keep kill timeout above the largest auto value so the outer watchdog doesn't cancel a valid auto run.
+const DEFAULT_TIMEOUT=900_000
 
 function run(cmd:string, args:string[], cwd:string, timeoutMs:number):Promise<{code:number|null, stdout:string, stderr:string, timedOut:boolean}>{
   return new Promise((resolvePromise)=>{
@@ -60,7 +62,7 @@ export function apply(ctx:Context, config:{rootPath?:string, timeoutMs?:number}=
   const defaultTimeout=config.timeoutMs ?? DEFAULT_TIMEOUT
   ctx.effect(()=>ctx.tools.register(defineTool({
     name:'govard_audit_lint',
-    description:'Run govard audit --checks lint --format json and return structured phpcs/phpstan results. Use before hand-parsing text.',
+    description:'Run govard audit --checks lint --format json and return structured phpcs/phpstan results. Use before hand-parsing text. Govard 1.67+ uses --timeout auto (framework-aware 90s-30m, 22.5m for wordpress/magento2) by default.',
     parameters:{
       worktreePath:{type:'string'},
       checks:{type:'array', items:{type:'string'}},
@@ -68,6 +70,11 @@ export function apply(ctx:Context, config:{rootPath?:string, timeoutMs?:number}=
       phpVersions:{type:'array', items:{type:'string'}},
       noLintResultCache:{type:'boolean'},
       timeoutMs:{type:'number'},
+      // New in 1.67/2.7: framework-aware timeout and native lint provider
+      timeout:{type:'string', description:'Govard --timeout (e.g. auto, 300s, 15m, 0 for no timeout). Default auto.'},
+      lintProvider:{type:'string', description:'--lint-provider (govard or external). Default govard.'},
+      scope:{type:'string', enum:['project','diff']},
+      base:{type:'string', description:'--base ref for diff scope'},
     },
     output:{
       schema:{
@@ -95,9 +102,22 @@ export function apply(ctx:Context, config:{rootPath?:string, timeoutMs?:number}=
       const checkPath= rawPath ?? ''
       if(checkPath!=='' && !(await isInsideRoot(root, checkPath))) return {text:`Path "${checkPath}" escapes the workspace root.`, truncated:false} as never
       const timeoutMs=(args as {timeoutMs?:number}).timeoutMs ?? defaultTimeout
-      if(timeoutMs<5000 || timeoutMs>300000) return {text:'timeoutMs out of range 5000-300000', truncated:false} as never
+      if(timeoutMs<5000 || timeoutMs>1_800_000) return {text:'timeoutMs out of range 5000-1800000 (5s-30m). Use --timeout auto for framework-aware estimation.', truncated:false} as never
 
-      const cliArgs=['audit','run','--checks','lint','--format','json']
+      const a = args as {checks?:string[]; mode?:string; scope?:string; base?:string; phpVersions?:string[]; noLintResultCache?:boolean; timeout?:string; lintProvider?:string}
+      const checks = a.checks && a.checks.length ? a.checks.join(',') : 'lint'
+      const mode = a.mode ?? 'auto'
+      const scope = a.scope
+      const base = a.base
+      const phpVersionsArg = a.phpVersions
+      const noLintResultCache = a.noLintResultCache
+      const timeout = a.timeout ?? 'auto'
+      const lintProvider = a.lintProvider ?? 'govard'
+      const cliArgs=['audit','run','--checks',checks,'--format','json','--mode',mode,'--timeout',timeout,'--lint-provider',lintProvider]
+      if(scope) cliArgs.push('--scope', scope)
+      if(base) cliArgs.push('--base', base)
+      if(phpVersionsArg && phpVersionsArg.length) cliArgs.push('--php', phpVersionsArg.join(','))
+      if(noLintResultCache) cliArgs.push('--no-lint-result-cache')
       const result=await run('govard', cliArgs, worktreePath, timeoutMs)
       if(result.timedOut){
         return {ok:false, exitCode: result.code ?? 124, timedOut:true, worktreePath, lint:{phpcs:{violations:[]}, phpstan:{errors:[]}, pubMediaGuard:{violations:[]}}, summary:{status:null, phpVersions:[], matrixComplete:false, findingCount:0, truncated:false}, rawJson:{}, errors:[{code:'timeout', message:`timed out after ${timeoutMs}ms` }], diagnostics:result.stderr.slice(0,4000)} as never
