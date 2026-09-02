@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-09-03
+
+### Added
+
+- **Telegram HTML digest + GitLab Markdown parity** — `reviewDigestText` now emits Telegram HTML (`<b>`, `<code>`, `<a href>`, `&amp;/&lt;/&gt;/&quot;`) with `🤖 Maestro Review` header, status, mode/profile/duration, findings (`new`/`reply`/`failed`/`no inline findings`), word-boundary truncated summary (`160 chars + …`), and `View MR →` footer; mirrors new `buildReviewComment` / `buildNotStartedComment` Markdown helpers in `orchestrator.ts`. Delivery via `maestroNotifier` with `parse_mode:HTML`, `protect_content:true`, `disable_web_page_preview:true` — verified live `200 {ok:true}` on `example-project !3772`.
+
+### Changed
+
+- **Word-boundary summary truncation** — `orchestrator summarize` now strips `## 🤖 Maestro Review` header and truncates at last space before 160 chars (` …`), avoiding half-cut code (`:src="item.displayI`); `notify formatSummary` applies same bound before `escapeHtml`.
+
+### Fixed
+
+- **Quote escaping in Telegram href** — `escapeHtml` now escapes `"` → `&quot;` for attribute safety.
+
 ## [0.2.1] - 2026-08-30
 
 ### Fixed
@@ -94,6 +108,9 @@ ReviewProvider + orchestrator for automated MR review in DeepSeek Harness.
   `maestro-review-settings-rpc` (`/dsh-maestro-review` channel).
 - **Client half** — settings section rendered into DSH Web slots.
 
+[0.3.0]: https://github.com/ddtcorex/dsh-maestro-review/releases/tag/v0.3.0
+[0.2.1]: https://github.com/ddtcorex/dsh-maestro-review/releases/tag/v0.2.1
+[0.2.0]: https://github.com/ddtcorex/dsh-maestro-review/releases/tag/v0.2.0
 [0.1.2]: https://github.com/ddtcorex/dsh-maestro-review/releases/tag/v0.1.2
 [0.1.1]: https://github.com/ddtcorex/dsh-maestro-review/releases/tag/v0.1.1
 [0.1.0]: https://github.com/ddtcorex/dsh-maestro-review/releases/tag/v0.1.0

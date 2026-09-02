@@ -15,7 +15,16 @@ export interface NotifierLike {
 }
 
 function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+function formatSummary(text: string, maxLen = 160): string {
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= maxLen) return normalized
+  const cut = normalized.slice(0, maxLen)
+  const lastSpace = cut.lastIndexOf(' ')
+  const truncated = (lastSpace > 80 ? cut.slice(0, lastSpace) : cut).trim()
+  return `${truncated} …`
 }
 
 export function reviewDigestText(notification: {
@@ -60,7 +69,7 @@ export function reviewDigestText(notification: {
     : ''
 
   const summaryBlock = notification.summary !== undefined && notification.summary.trim() !== ''
-    ? `\n\n${escapeHtml(notification.summary.trim())}`
+    ? `\n\n${escapeHtml(formatSummary(notification.summary.trim()))}`
     : ''
 
   const footerLink = mrUrl !== undefined ? `\n\n<a href="${escapeHtml(mrUrl)}">View MR →</a>` : ''

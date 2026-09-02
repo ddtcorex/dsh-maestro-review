@@ -923,9 +923,19 @@ export function apply(ctx: Context, config: Config): void {
           }
         })
       }
-      /** First line + bounded excerpt of a posted report, for the history log. */
-      const summarize = (body: string | undefined): string | undefined =>
-        body === undefined ? undefined : body.replace(/\s+/g, ' ').trim().slice(0, 200)
+      /** First line + bounded excerpt of a posted report, for the history log.
+       *  Word-boundary truncation so Telegram never shows half-cut code (`:src="item…`).
+       *  If the report starts with the markdown header, strip it — Telegram already has its own header.
+       */
+      const summarize = (body: string | undefined): string | undefined => {
+        if (body === undefined) return undefined
+        const withoutHeader = body.replace(/^## 🤖 Maestro Review[^\n]*\n\s*/, '').trim()
+        const cleaned = withoutHeader.replace(/\s+/g, ' ').trim()
+        if (cleaned.length <= 160) return cleaned
+        const cut = cleaned.slice(0, 160)
+        const lastSpace = cut.lastIndexOf(' ')
+        return `${(lastSpace > 80 ? cut.slice(0, lastSpace) : cut).trim()} …`
+      }
       // Award-emoji acknowledgements only make sense on the MR itself; inline
       // discussion reviews answer in-thread instead.
       const signals = payload.scope.kind === 'mr'
