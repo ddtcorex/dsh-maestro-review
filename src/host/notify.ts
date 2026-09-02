@@ -14,15 +14,58 @@ export interface NotifierLike {
   send(providerId: string, target: Record<string, unknown>, message: { text: string }): Promise<NotifyDeliveryResult>
 }
 
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
 export function reviewDigestText(notification: {
   projectPath: string
   mrIid: number
   status: 'completed' | 'failed'
   summary?: string
+  mode?: string
+  profile?: string
+  gitlabBaseUrl?: string
+  findings?: { newCount: number; replyCount: number; failedCount: number }
+  durationMs?: number
 }): string {
-  const outcome = notification.status === 'completed' ? '✅ completed' : '⚠️ failed'
-  const summary = notification.summary === undefined ? '' : `\n${notification.summary}`
-  return `Maestro review of ${notification.projectPath} !${notification.mrIid}: ${outcome}${summary}`
+  const isOk = notification.status === 'completed'
+  const statusLabel = isOk ? '✅ Completed' : '⚠️ Failed'
+  const mrUrl = notification.gitlabBaseUrl !== undefined
+    ? `${notification.gitlabBaseUrl.replace(/\/$/, '')}/${notification.projectPath}/-/merge_requests/${notification.mrIid}`
+    : undefined
+  const mrLink = mrUrl !== undefined
+    ? `<a href="${escapeHtml(mrUrl)}">!${notification.mrIid}</a>`
+    : `!${notification.mrIid}`
+
+  const metaParts: string[] = []
+  if (notification.mode !== undefined) metaParts.push(`<code>${escapeHtml(notification.mode)}</code>`)
+  if (notification.profile !== undefined) metaParts.push(`<code>${escapeHtml(notification.profile)}</code>`)
+  if (notification.durationMs !== undefined && notification.durationMs > 0) {
+    const s = Math.round(notification.durationMs / 1000)
+    metaParts.push(s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`)
+  }
+  const metaLine = metaParts.length > 0 ? ` · ${metaParts.join(' · ')}` : ''
+
+  const findingsLine = notification.findings !== undefined
+    ? (() => {
+        const f = notification.findings
+        const parts: string[] = []
+        if (f.newCount > 0) parts.push(`${f.newCount} new`)
+        if (f.replyCount > 0) parts.push(`${f.replyCount} reply`)
+        if (f.failedCount > 0) parts.push(`${f.failedCount} failed`)
+        if (parts.length === 0) parts.push('no inline findings')
+        return `\n<b>Findings:</b> ${parts.join(' · ')}`
+      })()
+    : ''
+
+  const summaryBlock = notification.summary !== undefined && notification.summary.trim() !== ''
+    ? `\n\n${escapeHtml(notification.summary.trim())}`
+    : ''
+
+  const footerLink = mrUrl !== undefined ? `\n\n<a href="${escapeHtml(mrUrl)}">View MR →</a>` : ''
+
+  return `<b>🤖 Maestro Review</b> — <code>${escapeHtml(notification.projectPath)}</code> ${mrLink}\n<b>Status:</b> ${statusLabel}${metaLine}${findingsLine}${summaryBlock}${footerLink}`
 }
 
 export function pinRotationText(pin: string): string {
