@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-09-02
+
+### Added
+
+- **Review message redesign** — redesign review messages for GitLab and Telegram (#48, #49 telegram HTML digest word-boundary truncation and quote escape).
+
+### Changed
+
+- Bump @deepseek-ai/* to 0.1.2-alpha.2, cordis 4.0.2 (#47), bump dsh-maestro-ci pin (#46), restore workspace dep for config-lib (#45).
+
+### Fixed
+
+- Use npm ^0.1.2 for config-lib to unblock 0.2.1 release (#44).
+
+
 ## [0.3.0] - 2026-09-03
 
 ### Added
