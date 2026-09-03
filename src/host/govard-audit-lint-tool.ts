@@ -126,14 +126,21 @@ export function collectLintFindings(parsed: unknown): CollectedLintFindings {
     }
   }
   const out: CollectedLintFindings = { phpcsViolations: [], phpstanErrors: [], pubMediaViolations: [], compat: [], total: 0 }
+  // DSH tool output must be lossless JSON: drop undefined fields, the
+  // runtime rejects values that do not survive a JSON round-trip.
+  const compact = (entry: Record<string, unknown>): Record<string, unknown> => {
+    const kept: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(entry)) if (v !== undefined) kept[k] = v
+    return kept
+  }
   for (const list of lists) {
     for (const f of list as Array<Record<string, any>>) {
-      if (f?.tool === 'phpstan') out.phpstanErrors.push({ path: f.path, line: f.line, message: f.message })
+      if (f?.tool === 'phpstan') out.phpstanErrors.push(compact({ path: f.path, line: f.line, message: f.message }) as CollectedLintFindings['phpstanErrors'][number])
       else if (f?.tool === 'phpcs') {
         if (f.path?.includes('pub/media') || f.rule?.includes('PubMedia')) out.pubMediaViolations.push(f)
-        else out.phpcsViolations.push({ path: f.path, line: f.line, column: f.column, rule: f.rule, message: f.message, severity: f.severity })
+        else out.phpcsViolations.push(compact({ path: f.path, line: f.line, column: f.column, rule: f.rule, message: f.message, severity: f.severity }) as CollectedLintFindings['phpcsViolations'][number])
       } else if (f && typeof f === 'object') {
-        out.compat.push({ tool: f.tool, path: f.path, line: f.line, rule: f.rule, message: f.message })
+        out.compat.push(compact({ tool: f.tool, path: f.path, line: f.line, rule: f.rule, message: f.message }) as CollectedLintFindings['compat'][number])
       }
     }
   }

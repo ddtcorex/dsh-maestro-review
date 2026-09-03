@@ -33,6 +33,15 @@ describe('collectLintFindings', () => {
   it('returns empty buckets when no findings shape matches', () => {
     expect(collectLintFindings({ status: 'passed' }).total).toBe(0)
   })
+  it('emits lossless JSON: no undefined values in any entry (DSH rejects them)', () => {
+    const out = collectLintFindings(envelope([{ tool: 'M2-LINT-COMPAT', message: 'x' }, { tool: 'phpcs' }]))
+    for (const bucket of [out.compat, out.phpcsViolations, out.phpstanErrors]) {
+      for (const entry of bucket as Array<Record<string, unknown>>) {
+        expect(Object.values(entry).some((v) => v === undefined)).toBe(false)
+      }
+    }
+    expect(JSON.parse(JSON.stringify(out))).toEqual(JSON.parse(JSON.stringify(JSON.parse(JSON.stringify(out)))))
+  })
 })
 
 describe('lintResultText with compat', () => {
