@@ -5,6 +5,16 @@ if [ -z "${MAESTRO_GITLAB_TOKEN:-}" ] || [ -z "${SOURCE_PROJECT_ID:-}" ] || [ -z
   exit 1
 fi
 export REVIEW_REPORT_DIR="$PWD"
+# Review history must survive across jobs (fresh container each run) or the
+# push-gate and incremental context go blind. The reviewer job caches
+# $REVIEW_REPORT_DIR/.maestro-history (see templates/reviewer-project.gitlab-ci.yml);
+# point DSH's history store at it via symlink before exec (a symlink survives exec,
+# a copy-back after would not). Falls back to ephemeral /app storage when unmounted.
+if [ -d "$REVIEW_REPORT_DIR" ]; then
+  mkdir -p "$REVIEW_REPORT_DIR/.maestro-history"
+  # -sfn on an existing real dir would nest inside it; only link when absent.
+  [ -e /app/dsh-maestro-review ] || ln -s "$REVIEW_REPORT_DIR/.maestro-history" /app/dsh-maestro-review
+fi
 # The opencode model is one env variable: substitute the __OPENCODE_MODEL__
 # placeholder in the baked settings template (default muse-spark-1.3-contributor).
 # A job-mounted /app/settings.yaml has no placeholder, so this is a no-op for it.

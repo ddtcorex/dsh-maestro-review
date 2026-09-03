@@ -19,6 +19,14 @@ review:
   # Every parameter comes from env (SOURCE_PROJECT_ID, MR_IID, GITLAB_HOST, REVIEW_MODE) — no CLI args.
   script:
     - /entrypoint.sh
+  # History cache — the push-gate (skip already-reviewed head SHAs) and incremental
+  # context read $DSH_HOME/dsh-maestro-review/reviews.json, which is ephemeral in a
+  # fresh container. entrypoint.sh symlinks it at this cached path (one store, many
+  # MRs — entries are keyed per MR inside). Cache miss fails open toward reviewing.
+  cache:
+    key: maestro-review-history
+    paths:
+      - .maestro-history/
   artifacts:
     when: always
     expire_in: 1 week
@@ -44,6 +52,9 @@ review:
   #   (no half-skilled review). Runtime-backed checks still degrade without a
   #   checkout — the profile adds framework checklists, not a govard run.
   #   deep + unmapped stays declined regardless of profile (no checkout in CI).
+  # Re-review pushes (optional — mirrors Settings UI autoRereviewOnPush, default off):
+  # REVIEW_ON_PUSH: "1"                              # re-review new pushes with incremental context;
+  #   unset = only the first (opened) review runs; same head SHA always skips.
 
 # Build the image inside the same reviewer project (optional):
 #

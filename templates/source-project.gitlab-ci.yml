@@ -17,6 +17,8 @@ maestro:trigger-review:
     GITLAB_HOST: $CI_SERVER_HOST
     SOURCE_SHA: $CI_COMMIT_SHA
     REVIEW_MODE: "quick"                 # or "deep" for a govard audit
+    REVIEW_PROFILE: "generic"            # per-project skill profile: magento2 | laravel | symfony | wordpress | generic
+    # REVIEW_ON_PUSH: "1"               # uncomment to re-review every push (default: only the opened review runs)
 
 # Trigger Token fallback (when not using `trigger: project:`):
 #

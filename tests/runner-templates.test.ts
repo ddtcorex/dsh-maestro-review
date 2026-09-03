@@ -11,12 +11,17 @@ describe('templates', () => {
     expect(yml).toMatch(/REVIEW_MODEL_PROVIDER/)
     expect(yml).toMatch(/REVIEW_MODEL:/)
     expect(yml).toMatch(/REVIEW_PROFILE/)
+    expect(yml).toMatch(/REVIEW_ON_PUSH/)
+    expect(yml).toMatch(/cache:\s*\n\s*key: maestro-review-history/m)
+    expect(yml).toMatch(/\.maestro-history\//)
   })
 
   it('source template uses trigger: project and no secrets', () => {
     const yml = readFileSync('templates/source-project.gitlab-ci.yml', 'utf-8')
     expect(yml).toMatch(/trigger:/)
     expect(yml).toMatch(/SOURCE_PROJECT_ID/)
+    expect(yml).toMatch(/REVIEW_PROFILE/)
+    expect(yml).toMatch(/REVIEW_ON_PUSH/)
     expect(yml).not.toMatch(/MAESTRO_GITLAB_TOKEN/)
     expect(yml).not.toMatch(/DEEPSEEK_API_KEY/)
   })

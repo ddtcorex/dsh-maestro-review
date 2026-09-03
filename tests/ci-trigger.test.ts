@@ -9,7 +9,7 @@ describe('parseCiEnvConfig', () => {
     })
     expect(cfg).toEqual({
       gitlabBaseUrl: 'https://gitlab.example.com', gitlabToken: 'glpat-xxx',
-      sourceProjectId: 123, mrIid: 456, mode: 'quick', dryRun: false,
+      sourceProjectId: 123, mrIid: 456, mode: 'quick', dryRun: false, rereviewOnPush: false,
     })
   })
 
@@ -39,6 +39,16 @@ describe('parseCiEnvConfig', () => {
     expect(cfg.reviewProfile).toBe('magento2')
   })
 
+  it('parses REVIEW_ON_PUSH=1 into rereviewOnPush, default false', () => {
+    const on = parseCiEnvConfig({
+      GITLAB_HOST: 'h', MAESTRO_GITLAB_TOKEN: 't', SOURCE_PROJECT_ID: '1', MR_IID: '2',
+      REVIEW_ON_PUSH: '1',
+    })
+    expect(on.rereviewOnPush).toBe(true)
+    const off = parseCiEnvConfig({ GITLAB_HOST: 'h', MAESTRO_GITLAB_TOKEN: 't', SOURCE_PROJECT_ID: '1', MR_IID: '2' })
+    expect(off.rereviewOnPush).toBe(false)
+  })
+
   it('throws on unsupported REVIEW_PROFILE', () => {
     expect(() => parseCiEnvConfig({
       GITLAB_HOST: 'h', MAESTRO_GITLAB_TOKEN: 't', SOURCE_PROJECT_ID: '1', MR_IID: '2',
@@ -47,9 +57,62 @@ describe('parseCiEnvConfig', () => {
   })
 })
 
+describe('fetchMrDetail', () => {
+  it('returns sourceBranch and headSha from the MR detail endpoint', async () => {
+    const { fetchMrDetail } = await import('../src/host/providers/ci-trigger.js')
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ source_branch: 'feat/x', sha: 'abc123' }), { status: 200 }))
+    await expect(fetchMrDetail(
+      parseCiEnvConfig({ GITLAB_HOST: 'h', MAESTRO_GITLAB_TOKEN: 'tok', SOURCE_PROJECT_ID: '1', MR_IID: '2' }),
+      fetcher as unknown as typeof fetch,
+    )).resolves.toEqual({ sourceBranch: 'feat/x', headSha: 'abc123' })
+  })
+})
+
+describe('runCiTrigger push-gate', () => {
+  const mrFetcher = (sha: string) => vi.fn(async () => new Response(
+    JSON.stringify({ source_branch: 'feat/x', sha }), { status: 200 }))
+  const fakeWriteFile = (async () => {}) as unknown as typeof import('node:fs/promises').writeFile
+  async function runGate(env: Record<string, string | undefined>, sha: string, prior: { headSha?: string } | undefined) {
+    const { parseCiEnvConfig, runCiTrigger } = await import('../src/host/providers/ci-trigger.js')
+    const cfg = parseCiEnvConfig({ GITLAB_HOST: 'h', MAESTRO_GITLAB_TOKEN: 'tok', SOURCE_PROJECT_ID: '1', MR_IID: '2', ...env })
+    const fakeCtx = { reviewRunner: vi.fn(async () => ({ ok: true, summary: 'done', failures: [], durationMs: 5 })) }
+    const history = { lastCompletedReview: vi.fn(async () => prior) }
+    const result = await runCiTrigger(fakeCtx as any, cfg, {
+      fetcher: mrFetcher(sha) as unknown as typeof fetch, writeFile: fakeWriteFile, history,
+    })
+    return { result, ran: (fakeCtx.reviewRunner as ReturnType<typeof vi.fn>).mock.calls.length > 0 }
+  }
+
+  it('skips when the head SHA already has a completed review (flag on or off)', async () => {
+    for (const env of [{}, { REVIEW_ON_PUSH: '1' }]) {
+      const { result, ran } = await runGate(env, 'abc', { headSha: 'abc' })
+      expect(ran).toBe(false)
+      expect(result.ok).toBe(true)
+      expect(result.summary).toMatch(/already reviewed/)
+    }
+  })
+
+  it('skips a new SHA when REVIEW_ON_PUSH is off and a prior review exists', async () => {
+    const { result, ran } = await runGate({}, 'def', { headSha: 'abc' })
+    expect(ran).toBe(false)
+    expect(result.summary).toMatch(/REVIEW_ON_PUSH/)
+  })
+
+  it('runs a new SHA when REVIEW_ON_PUSH=1 (incremental context comes from history)', async () => {
+    const { result, ran } = await runGate({ REVIEW_ON_PUSH: '1' }, 'def', { headSha: 'abc' })
+    expect(ran).toBe(true)
+    expect(result.ok).toBe(true)
+  })
+
+  it('runs when no prior review exists (MR opened)', async () => {
+    const { ran } = await runGate({}, 'abc', undefined)
+    expect(ran).toBe(true)
+  })
+})
+
 describe('fetchMrSourceBranch', () => {
   it('calls /merge_requests/:iid with PRIVATE-TOKEN and returns source_branch', async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({ source_branch: 'feat/x' }), { status: 200 }))
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ source_branch: 'feat/x', sha: 'abc123' }), { status: 200 }))
     const cfg = parseCiEnvConfig({ GITLAB_HOST: 'h', MAESTRO_GITLAB_TOKEN: 'tok', SOURCE_PROJECT_ID: '1', MR_IID: '2' })
     const branch = await fetchMrSourceBranch(cfg, fetcher as unknown as typeof fetch)
     expect(branch).toBe('feat/x')
@@ -66,7 +129,7 @@ describe('fetchMrSourceBranch', () => {
 describe('runCiTrigger', () => {
   it('builds a ReviewRequest with trigger "mention" and calls ctx.reviewRunner, then writes report files', async () => {
     const cfg = parseCiEnvConfig({ GITLAB_HOST: 'h', MAESTRO_GITLAB_TOKEN: 'tok', SOURCE_PROJECT_ID: '1', MR_IID: '2' })
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({ source_branch: 'feat/x' }), { status: 200 }))
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ source_branch: 'feat/x', sha: 'abc123' }), { status: 200 }))
     let capturedRequest: unknown
     const fakeCtx = { reviewRunner: vi.fn(async (req: unknown) => { capturedRequest = req; return { ok: true, summary: 'done', failures: [], durationMs: 5 } }) }
     const writes: Array<[string, string]> = []
@@ -83,7 +146,7 @@ describe('runCiTrigger', () => {
 
   it('prefixes report paths with REVIEW_REPORT_DIR when set (entrypoint cds away)', async () => {
     const cfg = parseCiEnvConfig({ GITLAB_HOST: 'h', MAESTRO_GITLAB_TOKEN: 'tok', SOURCE_PROJECT_ID: '1', MR_IID: '2' })
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({ source_branch: 'feat/x' }), { status: 200 }))
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ source_branch: 'feat/x', sha: 'abc123' }), { status: 200 }))
     const fakeCtx = { reviewRunner: vi.fn(async () => ({ ok: true, summary: 'done', failures: [], durationMs: 5 })) }
     const writes: Array<[string, string]> = []
     const fakeWriteFile = (async (path: string, data: string) => { writes.push([path, data]) }) as unknown as typeof import('node:fs/promises').writeFile
@@ -101,7 +164,7 @@ describe('runCiTrigger', () => {
       GITLAB_HOST: 'h', MAESTRO_GITLAB_TOKEN: 'tok', SOURCE_PROJECT_ID: '1', MR_IID: '2',
       REVIEW_PROFILE: 'magento2',
     })
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({ source_branch: 'feat/x' }), { status: 200 }))
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ source_branch: 'feat/x', sha: 'abc123' }), { status: 200 }))
     let capturedRequest: unknown
     const fakeCtx = { reviewRunner: vi.fn(async (req: unknown) => { capturedRequest = req; return { ok: true, summary: 'done', failures: [], durationMs: 5 } }) }
     const fakeWriteFile = (async () => {}) as unknown as typeof import('node:fs/promises').writeFile

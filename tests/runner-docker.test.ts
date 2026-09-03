@@ -31,6 +31,8 @@ describe('docker', () => {
     expect(sh).toMatch(/REVIEW_REPORT_DIR/)
     expect(sh).toMatch(/OPENCODE_MODEL/)
     expect(sh).toMatch(/__OPENCODE_MODEL__/)
+    expect(sh).toMatch(/\.maestro-history/)
+    expect(sh).toMatch(/dsh-maestro-review/)
   })
 
   it('ci-settings.yaml mirrors the host LLM config with no embedded secrets', () => {
