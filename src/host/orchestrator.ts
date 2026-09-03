@@ -30,7 +30,7 @@ import * as GovardAuditLintTool from './govard-audit-lint-tool.js'
 import * as PerfLogStatsTool from './perf-log-stats-tool.js'
 import * as ReviewToolPolicy from './tool-policy.js'
 import type { ReviewFinding, FindingSeverity } from './review-findings-tool.js'
-import type { ReviewRequest } from './events.js'
+import type { ReviewRequest, ReviewResult } from './events.js'
 import { loadUserConfig, type MaestroUserConfig, type ProjectMapping, type ReviewModelSelection } from './config-store.js'
 import { hasCompletedReview, lastCompletedReview, pruneHistory, recordReviewFinish, recordReviewStart } from './review-history.js'
 import { buildIncrementalBlock, fetchCompare, fetchMrDetailHeadSha } from './incremental.js'
@@ -1088,8 +1088,9 @@ export function apply(ctx: Context, config: Config): void {
     }
   }
 
-  ctx.on('maestro/review-request', (payload) => {
-    void (async () => {
+  async function runReview(payload: ReviewRequest): Promise<ReviewResult> {
+    const t0 = Date.now()
+    try {
       const userConfig = await loadUserConfig()
       const effective = {
         gitlabBaseUrl: userConfig.gitlabBaseUrl ?? config.gitlabBaseUrl,
@@ -1109,18 +1110,27 @@ export function apply(ctx: Context, config: Config): void {
       const mapping = effective.projectMappings.find(m => m.projectPath === payload.projectPath)
       // Unmapped reviewer assignments remain no-ops. Only an explicit mention
       // may opt into the intentionally limited, diff-only fallback below.
-      if (mapping === undefined && payload.trigger !== 'mention') return
+      if (mapping === undefined && payload.trigger !== 'mention') {
+        return { ok: true, failures: [], durationMs: Date.now() - t0 }
+      }
       const triggers = resolveReviewTriggers(userConfig, mapping)
       // Gated-off auto-triggers stay fully silent: no history, no signals, no comment.
-      if (payload.trigger === 'reviewer-assignment' && !triggers.onAssign) return
-      if (payload.trigger === 'push' && !triggers.onPush) return
+      if (payload.trigger === 'reviewer-assignment' && !triggers.onAssign) {
+        return { ok: true, failures: [], durationMs: Date.now() - t0 }
+      }
+      if (payload.trigger === 'push' && !triggers.onPush) {
+        return { ok: true, failures: [], durationMs: Date.now() - t0 }
+      }
       // A push only re-reviews an MR that already has a completed review;
       // otherwise every newly opened MR would be reviewed twice.
-      if (payload.trigger === 'push' && !(await hasCompletedReview(payload.projectId, payload.mrIid))) return
+      if (payload.trigger === 'push' && !(await hasCompletedReview(payload.projectId, payload.mrIid))) {
+        return { ok: true, failures: [], durationMs: Date.now() - t0 }
+      }
       const { gitlabToken } = effective
       if (gitlabToken === undefined) {
-        console.error(`maestro-orchestrator: MR !${String(payload.mrIid)} for project ${payload.projectPath} has no GitLab token — set one in Maestro Settings or MAESTRO_GITLAB_TOKEN`)
-        return
+        const message = `MR !${String(payload.mrIid)} for project ${payload.projectPath} has no GitLab token — set one in Maestro Settings or MAESTRO_GITLAB_TOKEN`
+        console.error(`maestro-orchestrator: ${message}`)
+        return { ok: false, failures: [message], durationMs: Date.now() - t0 }
       }
       const resolved = { ...effective, gitlabToken }
       const historyId = `${payload.projectId}-${payload.mrIid}-${Date.now()}`
@@ -1233,7 +1243,7 @@ export function apply(ctx: Context, config: Config): void {
             await recordReviewFinish(historyId, { status: 'completed', summary: 'Deep review declined (unmapped project)' })
             notifyTelegram('completed', 'Deep review declined (unmapped project)')
             await signals?.finish('completed')
-            return
+            return { ok: true, summary: 'Deep review declined (unmapped project)', failures: [], durationMs: Date.now() - t0 }
           }
           const diffBody = await runDiffOnlyReview(payload, {
             runReviewer: (p) => runReviewer(undefined, p, resolved, undefined, reviewModelSelection, incrementalBlock),
@@ -1245,7 +1255,7 @@ export function apply(ctx: Context, config: Config): void {
           await recordReviewFinish(historyId, { status: 'completed', summary: summarize(diffBody) })
           notifyTelegram('completed', summarize(diffBody))
           await signals?.finish('completed')
-          return
+          return { ok: true, summary: summarize(diffBody), failures: [], durationMs: Date.now() - t0 }
         }
         let fullBody: string
         try {
@@ -1276,25 +1286,32 @@ export function apply(ctx: Context, config: Config): void {
             await recordReviewFinish(historyId, { status: 'completed', summary: branchNote })
             notifyTelegram('completed', branchNote)
             await signals?.finish('completed')
-            return
+            return { ok: true, summary: branchNote, failures: [], durationMs: Date.now() - t0 }
           }
           throw err
         }
         await recordReviewFinish(historyId, { status: 'completed', summary: summarize(fullBody) })
         notifyTelegram('completed', summarize(fullBody))
         await signals?.finish('completed')
+        return { ok: true, summary: summarize(fullBody), failures: [], durationMs: Date.now() - t0 }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         await recordReviewFinish(historyId, { status: 'failed', error: message }).catch(() => {})
         notifyTelegram('failed', message)
         await signals?.finish('failed')
-        throw err
+        return { ok: false, summary: undefined, failures: [message], durationMs: Date.now() - t0 }
       }
-    })().catch((err: unknown) => {
+    } catch (err) {
       // Worktree creation, agent creation, and fallback delivery all run from
-      // an event callback, so surface failures rather than leaking a rejected
-      // fire-and-forget Promise.
+      // this function — surface failures as a result instead of an unhandled
+      // rejection, so both the fire-and-forget webhook path and an awaiting
+      // CI caller observe the same outcome.
+      const message = err instanceof Error ? err.message : String(err)
       console.error(`maestro-orchestrator: review run failed for MR !${String(payload.mrIid)}:`, err)
-    })
-  })
+      return { ok: false, summary: undefined, failures: [message], durationMs: Date.now() - t0 }
+    }
+  }
+
+  ctx.on('maestro/review-request', (payload) => { void runReview(payload) })
+  ctx.provide('reviewRunner', runReview)
 }

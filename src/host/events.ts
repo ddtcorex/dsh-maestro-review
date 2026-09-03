@@ -18,8 +18,19 @@ export interface ReviewRequest extends MrOpenedPayload {
   scope: ReviewScope
 }
 
+export interface ReviewResult {
+  /** false = the review could not run or failed outright (infra error) — a CI caller should exit non-zero. */
+  ok: boolean
+  summary?: string
+  failures: string[]
+  durationMs: number
+}
+
 declare module '@deepseek-ai/cordis' {
   interface Events {
     'maestro/review-request': (payload: ReviewRequest) => void
+  }
+  interface Context {
+    reviewRunner: (payload: ReviewRequest) => Promise<ReviewResult>
   }
 }
