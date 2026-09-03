@@ -4,12 +4,18 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 export const name = 'maestro-review-findings-tool'
 export const inject = ['tools']
 
+export type FindingSeverity = 'blocking' | 'major' | 'minor' | 'nit'
+
 export interface ReviewFinding {
   status: 'new' | 'reply'
   body: string
   path?: string
   line?: number
   discussionId?: string
+  /** Assigned by the reviewer; missing values are treated as `minor`. */
+  severity?: FindingSeverity
+  /** Optional area tag, e.g. security, correctness, perf, style. */
+  category?: string
 }
 
 export interface Config {
@@ -19,7 +25,7 @@ export interface Config {
 export function apply(ctx: Context, config: Config): void {
   ctx.tools.register(defineTool({
     name: 'report_review_findings',
-    description: 'Submit your complete list of review findings exactly once, when done analyzing. Each finding is {status: "new", path, line, body} for a location with no existing thread, or {status: "reply", discussionId, body} to update an existing thread returned by gitlab_list_own_review_threads (reply to a resolved thread reopens it — prefer reply over new when the substance matches).',
+    description: 'Submit your complete list of review findings exactly once, when done analyzing. Each finding is {status: "new", path, line, body, severity, category?} for a location with no existing thread, or {status: "reply", discussionId, body, severity, category?} to update an existing thread returned by gitlab_list_own_review_threads (reply to a resolved thread reopens it — prefer reply over new when the substance matches). Severity (required in spirit, defaults to minor): blocking = must fix before merge (regression, data loss, real XSS/RCE); major = should fix (correctness bug, security hardening with a realistic path); minor = nice to fix (perf nit with impact, stale docs, fragile coupling); nit = style/micro with no behavior impact.',
     parameters: {
       findings: {
         type: 'array',
@@ -34,6 +40,8 @@ export function apply(ctx: Context, config: Config): void {
             path: { type: 'string' },
             line: { type: 'number' },
             discussionId: { type: 'string' },
+            severity: { type: 'string', enum: ['blocking', 'major', 'minor', 'nit'] },
+            category: { type: 'string' },
           },
         },
       },

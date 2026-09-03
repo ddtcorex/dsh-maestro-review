@@ -29,7 +29,7 @@ import * as ScopeSplitTool from './scope-split-tool.js'
 import * as GovardAuditLintTool from './govard-audit-lint-tool.js'
 import * as PerfLogStatsTool from './perf-log-stats-tool.js'
 import * as ReviewToolPolicy from './tool-policy.js'
-import type { ReviewFinding } from './review-findings-tool.js'
+import type { ReviewFinding, FindingSeverity } from './review-findings-tool.js'
 import type { ReviewRequest } from './events.js'
 import { loadUserConfig, type MaestroUserConfig, type ReviewModelSelection } from './config-store.js'
 import { hasCompletedReview, lastCompletedReview, pruneHistory, recordReviewFinish, recordReviewStart } from './review-history.js'
@@ -59,6 +59,40 @@ const execFileAsync = promisify(execFile)
 const GIT_TIMEOUT_MS = 60_000
 
 /**
+ * Finding severity, assigned by the reviewer. Display order is fixed
+ * (blocking first) wherever counts are rendered.
+ */
+export const SEVERITY_ORDER: readonly FindingSeverity[] = ['blocking', 'major', 'minor', 'nit'] as const
+
+const SEVERITY_LABEL: Record<FindingSeverity, string> = {
+  blocking: '🔴 Blocking',
+  major: '🟡 Major',
+  minor: '🔵 Minor',
+  nit: '⚪ Nit',
+}
+
+/** Missing or unknown severities degrade to `minor` — never drop a finding. */
+export function normalizeFindingSeverity(severity: unknown): FindingSeverity {
+  return severity === 'blocking' || severity === 'major' || severity === 'minor' || severity === 'nit'
+    ? severity
+    : 'minor'
+}
+
+export function severityPrefix(severity: unknown): string {
+  return SEVERITY_LABEL[normalizeFindingSeverity(severity)]
+}
+
+/** Count findings per severity; zero counts are omitted. */
+export function countFindingSeverities(findings: ReviewFinding[]): Partial<Record<FindingSeverity, number>> {
+  const counts: Partial<Record<FindingSeverity, number>> = {}
+  for (const finding of findings) {
+    const level = normalizeFindingSeverity(finding.severity)
+    counts[level] = (counts[level] ?? 0) + 1
+  }
+  return counts
+}
+
+/**
  * Build a user-friendly GitLab Markdown comment for a completed review.
  * Shared design language with `reviewDigestText` (Telegram HTML) — same
  * header, status, findings structure, footer. Both use `🤖 Maestro Review`
@@ -72,7 +106,7 @@ export function buildReviewComment(opts: {
   profile?: string
   summary: string
   failures: string[]
-  findings?: { newCount: number; replyCount: number }
+  findings?: { newCount: number; replyCount: number; severityCounts?: Partial<Record<FindingSeverity, number>> }
   durationMs?: number
   isDiffOnly?: boolean
   isDiscussion?: boolean
@@ -97,6 +131,12 @@ export function buildReviewComment(opts: {
         const parts: string[] = []
         if (opts.findings.newCount > 0) parts.push(`💬 ${opts.findings.newCount} new`)
         if (opts.findings.replyCount > 0) parts.push(`🔁 ${opts.findings.replyCount} updated`)
+        if (opts.findings.severityCounts !== undefined) {
+          for (const level of SEVERITY_ORDER) {
+            const count = opts.findings.severityCounts[level] ?? 0
+            if (count > 0) parts.push(`${SEVERITY_LABEL[level].split(' ')[0]} ${count} ${level}`)
+          }
+        }
         if (parts.length === 0) parts.push('no inline findings')
         return `\n\n**Findings:** ${parts.join(' · ')}`
       })()
@@ -223,6 +263,7 @@ export const Config: z<Config> = z.object({
 export interface ReviewOutcome {
   summary: string
   failures: string[]
+  severityCounts?: Partial<Record<FindingSeverity, number>>
 }
 
 /**
@@ -374,10 +415,12 @@ export async function postReviewFindings(findings: ReviewFinding[], config: Gitl
   const headers = { 'PRIVATE-TOKEN': config.token, 'Content-Type': 'application/json' }
   for (const finding of findings) {
     let response: Response
+    const label = severityPrefix(finding.severity)
+    const body = finding.body.startsWith(label) ? finding.body : `${label}\n\n${finding.body}`
     if (finding.status === 'reply') {
       if (finding.discussionId === undefined) throw new Error('reply finding missing discussionId')
       response = await fetcher(`${apiBase}/discussions/${encodeURIComponent(finding.discussionId)}/notes`, {
-        method: 'POST', headers, body: JSON.stringify({ body: finding.body }),
+        method: 'POST', headers, body: JSON.stringify({ body }),
       })
     } else {
       if (finding.path === undefined || finding.line === undefined) throw new Error('new finding missing path or line')
@@ -395,12 +438,12 @@ export async function postReviewFindings(findings: ReviewFinding[], config: Gitl
         // Line not in diff — fallback to MR note so finding is not silently lost.
         response = await fetcher(`${apiBase}/notes`, {
           method: 'POST', headers,
-          body: JSON.stringify({ body: `**Inline fallback — \`${finding.path}:${finding.line}\` line is not in current MR diff**\n\n${finding.body}` }),
+          body: JSON.stringify({ body: `**Inline fallback — \`${finding.path}:${finding.line}\` line is not in current MR diff**\n\n${body}` }),
         })
       } else {
         response = await fetcher(`${apiBase}/discussions`, {
           method: 'POST', headers,
-          body: JSON.stringify({ body: finding.body, position: {
+          body: JSON.stringify({ body, position: {
             position_type: 'text', ...snapshot.diffRefs, old_path: change.old_path, new_path: change.new_path,
             ...linePosition.oldLine === undefined ? {} : { old_line: linePosition.oldLine },
             ...linePosition.newLine === undefined ? {} : { new_line: linePosition.newLine },
@@ -498,7 +541,7 @@ export async function runReviewAndAudit(payload: ReviewRequest, deps: ReviewAndA
       ])
       const labels = ['Reviewer', 'Auditor']
       if (settled[0].status === 'fulfilled') {
-        const { summary, failures } = settled[0].value
+        const { summary, failures, severityCounts } = settled[0].value
         // Try to parse findings counts from summary like "2 new inline comment(s), 1 thread(s) updated."
         const summaryText = summary ?? ''
         const newMatch = /(\d+)\s+new inline/.exec(summaryText)
@@ -515,7 +558,7 @@ export async function runReviewAndAudit(payload: ReviewRequest, deps: ReviewAndA
               profile: (deps as unknown as { reviewProfile?: string }).reviewProfile,
               summary: summaryText,
               failures,
-              findings: { newCount, replyCount },
+              findings: { newCount, replyCount, severityCounts },
             })
           : `## 🤖 Maestro Review\n\n**\`${payload.projectPath}\` !${payload.mrIid}** · ✅ Completed · \`${payload.mode}\`${(deps as unknown as { reviewProfile?: string }).reviewProfile !== undefined ? ` · \`${(deps as unknown as { reviewProfile: string }).reviewProfile}\`` : ''}\n\n${summaryText}${failures.length > 0 ? `\n\n<details>\n<summary>⚠️ Failed to post (${failures.length})</summary>\n\n${failures.map((f) => `- \`${f}\``).join('\n')}\n\n</details>` : ''}`
         sections.push(richOpts)
@@ -786,7 +829,7 @@ export function apply(ctx: Context, config: Config): void {
             failures.push(`${locator}: ${err instanceof Error ? err.message : String(err)}`)
           }
         }
-        return { summary: `${postedNew} new inline comment(s), ${postedReplies} thread(s) updated.`, failures }
+        return { summary: `${postedNew} new inline comment(s), ${postedReplies} thread(s) updated.`, failures, severityCounts: countFindingSeverities(capturedFindings) }
       } finally {
         await handle.dispose()
       }
