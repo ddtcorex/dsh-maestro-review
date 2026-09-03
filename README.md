@@ -52,7 +52,7 @@ The **reviewer project** holds all secrets; the **source project** only triggers
    # templates/reviewer-project.gitlab-ci.yml
    review:
      stage: review
-     image: registry.ddtcorex.com/maestro-reviewer:0.1.0
+     image: ddtcorex/maestro-reviewer:0.1.0   # or :latest
      rules: [{ if: $CI_PIPELINE_SOURCE == "pipeline" }, { if: $CI_PIPELINE_SOURCE == "trigger" }, { if: $CI_PIPELINE_SOURCE == "web", when: manual }]
      variables: { GIT_STRATEGY: none }
      script: ['/entrypoint.sh review']

@@ -26,7 +26,7 @@
     "build": "tsc && tsc -p tsconfig.runner.json",
     "test": "vitest run",
     "verify": "tsc --noEmit && tsc -p tsconfig.runner.json --noEmit",
-    "docker:build": "docker build -f docker/Dockerfile -t registry.ddtcorex.com/maestro-reviewer:$npm_package_version ../.."
+    "docker:build": "docker build -f docker/Dockerfile -t ddtcorex/maestro-reviewer:0.1.0 -t ddtcorex/maestro-reviewer:latest ../.."
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
