@@ -29,6 +29,23 @@ interface GitlabDiff {
   diff: string
 }
 
+export interface DiffFileEntry {
+  path: string
+  bytes: number
+}
+
+/** Per-file inventory of the MR diff — small enough to return inline. Pure. */
+export function diffFileList(diffs: GitlabDiff[]): DiffFileEntry[] {
+  return diffs.map((d) => ({ path: d.new_path, bytes: Buffer.byteLength(d.diff, 'utf8') }))
+}
+
+/** Unified text for one file, or undefined when the path is not in the MR. Pure. */
+export function selectFileDiff(diffs: GitlabDiff[], path: string): string | undefined {
+  const d = diffs.find((x) => x.new_path === path || x.old_path === path)
+  if (d === undefined) return undefined
+  return `--- ${d.old_path}\n+++ ${d.new_path}\n${d.diff}`
+}
+
 interface GitlabDiffRefs {
   base_sha: string
   start_sha: string
@@ -104,6 +121,17 @@ export function apply(ctx: Context, config: Config): void {
   const apiBase = `${config.baseUrl}/api/v4/projects/${config.projectId}/merge_requests/${config.mrIid}`
   const headers = { 'PRIVATE-TOKEN': config.token }
   let cachedDiffRefs: GitlabDiffRefs | undefined
+  let cachedDiffs: GitlabDiff[] | undefined
+
+  async function getDiffs(): Promise<GitlabDiff[]> {
+    if (cachedDiffs !== undefined) return cachedDiffs
+    const response = await fetch(`${apiBase}/diffs`, { headers })
+    if (!response.ok) {
+      throw new Error(`GitLab API error ${response.status}: ${await response.text()}`)
+    }
+    cachedDiffs = (await response.json()) as GitlabDiff[]
+    return cachedDiffs
+  }
 
   async function getDiffRefs(): Promise<GitlabDiffRefs> {
     if (cachedDiffRefs !== undefined) return cachedDiffRefs
@@ -117,24 +145,41 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.tools.register(defineTool({
     name: 'gitlab_get_mr_diff',
-    description: 'Fetch the current unified diff for this merge request. The full diff is written to path (inside your workspace, readable via maestro_read_file); bytes is its size. Do not look for it under /tmp.',
+    description: 'Fetch the current unified diff for this merge request. The full diff is written to path (inside your workspace, readable via maestro_read_file); bytes is its size and files lists per-file sizes. Prefer gitlab_get_file_diff per file you inspect — small inline results never spill. Do not look for anything under /tmp.',
     parameters: {},
     output: {
-      schema: { type: 'object', additionalProperties: false, properties: { path: { type: 'string', required: true }, bytes: { type: 'number', required: true } } },
-      render: (_args, value) => [{ type: 'text', text: `diff written to ${value.path} (${value.bytes} bytes)` }],
+      schema: { type: 'object', additionalProperties: false, properties: { path: { type: 'string', required: true }, bytes: { type: 'number', required: true }, files: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { path: { type: 'string', required: true }, bytes: { type: 'number', required: true } } } } } },
+      render: (_args, value) => [{ type: 'text', text: `diff written to ${value.path} (${value.bytes} bytes, ${value.files.length} files)` }],
     },
     async execute(_args, exec) {
-      const response = await fetch(`${apiBase}/diffs`, { headers })
-      if (!response.ok) {
-        throw new Error(`GitLab API error ${response.status}: ${await response.text()}`)
-      }
-      const diffs = await response.json() as GitlabDiff[]
+      const diffs = await getDiffs()
       const text = diffs.map(d => `--- ${d.old_path}\n+++ ${d.new_path}\n${d.diff}`).join('\n\n')
       const cwd = sessionCwd(exec)
       // No session cwd (should not happen for review agents): fall back to
       // the legacy inline text, which the runtime may spill to /tmp.
-      if (cwd === undefined) return { path: '', bytes: Buffer.byteLength(text, 'utf8') }
-      return writeDiffSpill(cwd, config.mrIid, text)
+      if (cwd === undefined) return { path: '', bytes: Buffer.byteLength(text, 'utf8'), files: diffFileList(diffs) }
+      const spilled = writeDiffSpill(cwd, config.mrIid, text)
+      return { ...spilled, files: diffFileList(diffs) }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'gitlab_get_file_diff',
+    description: "Return one file's unified diff inline (small results never spill to /tmp). Use after gitlab_get_mr_diff to inspect files one by one.",
+    parameters: {
+      path: { type: 'string', required: true, description: 'New path of the file, as listed in files.' },
+    },
+    output: {
+      schema: { type: 'object', additionalProperties: false, properties: { path: { type: 'string', required: true }, text: { type: 'string', required: true } } },
+      render: (_args, value) => [{ type: 'text', text: value.text }],
+    },
+    async execute(args) {
+      const diffs = await getDiffs()
+      const text = selectFileDiff(diffs, args.path)
+      if (text === undefined) {
+        throw new Error(`path not in this MR diff: ${args.path}`)
+      }
+      return { path: args.path, text }
     },
   }))
 
