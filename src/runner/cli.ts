@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 export type RunnerConfig = {
   gitlabHost: string; gitlabToken: string; sourceProjectId: number;
   mrIid: number; gitlabBaseUrl: string; mode: 'quick'|'deep'; dryRun: boolean; llmProvider?: string;
@@ -31,15 +33,30 @@ export function validateRunnerConfig(cfg: RunnerConfig): asserts cfg is ValidRun
   assertSafeId(cfg.mrIid, 'mrIid')
 }
 
+export async function main(argv: string[] = process.argv.slice(2), env: Record<string, string|undefined> = process.env as Record<string, string|undefined>): Promise<void> {
+  const cfg = parseRunnerConfig(env, argv)
+  validateRunnerConfig(cfg)
+  if (cfg.dryRun) console.log('[dry-run] runner config valid', { gitlabHost: cfg.gitlabHost, sourceProjectId: cfg.sourceProjectId, mrIid: cfg.mrIid, mode: cfg.mode })
+  const { runOnce } = await import('./runner-orchestrator.js')
+  const { buildReportJson } = await import('./report.js')
+  const { fetchMrDetail } = await import('./gitlab-fetch.js')
+  const result = await runOnce(cfg)
+  let headSha = 'unknown'
+  try {
+    const detail = await fetchMrDetail(cfg)
+    headSha = detail.headSha ?? 'unknown'
+  } catch {}
+  const report = buildReportJson(cfg, result, headSha) as Record<string, unknown>
+  const cwd = process.cwd()
+  await writeFile(join(cwd, 'review-report.json'), JSON.stringify(report, null, 2), 'utf-8')
+  const md = `# Review Report\n\n**Project:** ${cfg.sourceProjectId} !${cfg.mrIid}\n**Mode:** ${cfg.mode}\n**Head:** ${headSha}\n**Duration:** ${result.durationMs}ms\n\n${result.summary}\n${result.failures.length > 0 ? `\nFailures:\n${result.failures.map((f) => `- ${f}`).join('\n')}\n` : ''}`
+  await writeFile(join(cwd, 'review-report.md'), md, 'utf-8')
+}
+
 // CLI entry — only runs when executed directly, not when imported
 if (import.meta.url === `file://${process.argv[1]}`) {
-  try {
-    const cfg = parseRunnerConfig(process.env as Record<string, string|undefined>, process.argv.slice(2))
-    validateRunnerConfig(cfg)
-    // Runner execution is handled by Task 2/3 (orchestrator); this entry validates config
-    if (cfg.dryRun) console.log('[dry-run] runner config valid', { gitlabHost: cfg.gitlabHost, sourceProjectId: cfg.sourceProjectId, mrIid: cfg.mrIid, mode: cfg.mode })
-  } catch (e) {
+  main().catch((e) => {
     console.error(e instanceof Error ? e.message : String(e))
     process.exit(1)
-  }
+  })
 }
