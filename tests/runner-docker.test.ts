@@ -16,6 +16,7 @@ describe('docker', () => {
     expect(df).toMatch(/ENV DSH_HOME=\/app\s*$/m)
     expect(df).toMatch(/\.agent-presets\/dsh-maestro-reviewer/)
     expect(df).toMatch(/\.agent-presets\/dsh-maestro-auditor/)
+    expect(df).toMatch(/ci-settings\.yaml \/app\/settings\.yaml/)
     expect(df).toMatch(/tini/)
     expect(df).toMatch(/ENTRYPOINT.*entrypoint\.sh/)
   })
@@ -28,5 +29,14 @@ describe('docker', () => {
     expect(sh).toMatch(/--profile reviewer-ci"?\s*$/m)
     expect(sh).not.toMatch(/cli\.js/)
     expect(sh).toMatch(/REVIEW_REPORT_DIR/)
+  })
+
+  it('ci-settings.yaml activates opencode-go with no embedded secrets', () => {
+    const yml = readFileSync('docker/ci-settings.yaml', 'utf-8')
+    expect(yml).toMatch(/opencode-go/)
+    expect(yml).toMatch(/apiKeyEnv:\s*OPENCODE_GO_API_KEY/)
+    expect(yml).not.toMatch(/^agent-default-model:/m)
+    expect(yml).not.toMatch(/sk-[A-Za-z0-9]{8,}/)
+    expect(yml).not.toMatch(/glpat-[A-Za-z0-9_.-]{8,}/)
   })
 })

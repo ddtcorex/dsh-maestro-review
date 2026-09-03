@@ -83,6 +83,13 @@ COPY --from=builder /build/profiles/reviewer-ci ./profiles/reviewer-ci
 # 'preset "dsh-maestro-reviewer" not found (available: standard, ptc, minimal, cordis)').
 COPY --from=builder /build/packages/dsh-maestro-review/presets/maestro-reviewer ./.agent-presets/dsh-maestro-reviewer
 COPY --from=builder /build/packages/dsh-maestro-review/presets/maestro-auditor ./.agent-presets/dsh-maestro-auditor
+# Provider activation for the REVIEW_MODEL pin — dsh registers LLM adapters from
+# DSH_HOME settings, which is empty in a fresh container (verified 2026-09-04:
+# pinning opencode-go without this fails with 'no adapter registered for
+# provider "opencode-go"'). Holds no secrets (key resolves from OPENCODE_GO_API_KEY
+# at call time); a job-mounted /app/settings.yaml overrides it. Agent default is
+# untouched — the pin applies only when REVIEW_MODEL_PROVIDER/REVIEW_MODEL select it.
+COPY packages/dsh-maestro-review/docker/ci-settings.yaml /app/settings.yaml
 COPY packages/dsh-maestro-review/docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
