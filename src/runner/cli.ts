@@ -45,18 +45,26 @@ export async function main(argv: string[] = process.argv.slice(2), env: Record<s
     })
     if (!res.ok) throw new Error(`GitLab API error ${res.status}: ${await res.text()}`)
   }
-  let result: Awaited<ReturnType<typeof runOnce>>
+  function sanitizeErrorMessage(e: unknown): string {
+    const raw = e instanceof Error ? e.message : String(e)
+    // Strip HTML tags (example.com 404 returns HTML) and collapse whitespace, then truncate
+    const stripped = raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+    return stripped.slice(0, 500)
+  }
+  type RunnerResult = Awaited<ReturnType<typeof runOnce>>
+  let result: RunnerResult
   try {
-    result = await runOnce(cfg, { postComment } as any)
+    result = await runOnce(cfg, { postComment })
   } catch (e) {
     if (cfg.dryRun) {
-      console.warn(`[dry-run] fetch failed (expected with dummy host): ${e instanceof Error ? e.message : String(e)}`)
-      result = { summary: `[dry-run] fetch skipped: ${e instanceof Error ? e.message : String(e)}`, failures: [String(e)], durationMs: 0, headSha: 'dry-run' } as any
+      const msg = sanitizeErrorMessage(e)
+      console.warn(`[dry-run] fetch failed (expected with dummy host): ${msg}`)
+      result = { summary: `[dry-run] fetch skipped: ${msg}`, failures: [msg], durationMs: 0, headSha: 'dry-run' }
     } else {
       throw e
     }
   }
-  const headSha = (result as any).headSha ?? 'unknown'
+  const headSha = result.headSha ?? 'unknown'
   const report = buildReportJson(cfg, result, headSha) as Record<string, unknown>
   const cwd = process.cwd()
   await writeFile(join(cwd, 'review-report.json'), JSON.stringify(report, null, 2), 'utf-8')

@@ -16,7 +16,8 @@
     "lib",
     "src",
     "presets",
-    "client"
+    "client",
+    "templates"
   ],
   "bin": {
     "runner": "lib/runner/cli.js"

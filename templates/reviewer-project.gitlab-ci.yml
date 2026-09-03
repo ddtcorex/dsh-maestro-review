@@ -3,7 +3,7 @@
 # Optional: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, REVIEW_MODE (quick|deep)
 # GIT_STRATEGY none — runner fetches diff via API, no checkout of reviewer repo
 # Secrets stay in this project only — source trigger job carries no secrets (fork-safe)
-# Trigger Token fallback: if trigger: project is not allowed, use curl with $MAESTRO_TRIGGER_TOKEN (trigger-only scope)
+# Trigger Token fallback: if trigger: project is not allowed, use curl with $TRIGGER_TOKEN (trigger-only scope)
 # strategy: depend — source pipeline waits for reviewer status (optional, shows MR widget)
 review:
   stage: review
