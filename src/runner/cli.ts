@@ -39,13 +39,14 @@ export async function main(argv: string[] = process.argv.slice(2), env: Record<s
   if (cfg.dryRun) console.log('[dry-run] runner config valid', { gitlabHost: cfg.gitlabHost, sourceProjectId: cfg.sourceProjectId, mrIid: cfg.mrIid, mode: cfg.mode })
   const { runOnce } = await import('./runner-orchestrator.js')
   const { buildReportJson } = await import('./report.js')
-  const { fetchMrDetail } = await import('./gitlab-fetch.js')
-  const result = await runOnce(cfg)
-  let headSha = 'unknown'
-  try {
-    const detail = await fetchMrDetail(cfg)
-    headSha = detail.headSha ?? 'unknown'
-  } catch {}
+  const postComment = async (body: string) => {
+    const res = await fetch(`${cfg.gitlabBaseUrl}/api/v4/projects/${cfg.sourceProjectId}/merge_requests/${cfg.mrIid}/notes`, {
+      method: 'POST', headers: { 'PRIVATE-TOKEN': cfg.gitlabToken, 'Content-Type': 'application/json' }, body: JSON.stringify({ body })
+    })
+    if (!res.ok) throw new Error(`GitLab API error ${res.status}: ${await res.text()}`)
+  }
+  const result = await runOnce(cfg, { postComment } as any)
+  const headSha = (result as any).headSha ?? 'unknown'
   const report = buildReportJson(cfg, result, headSha) as Record<string, unknown>
   const cwd = process.cwd()
   await writeFile(join(cwd, 'review-report.json'), JSON.stringify(report, null, 2), 'utf-8')

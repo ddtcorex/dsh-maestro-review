@@ -3,6 +3,7 @@ import type { RunnerConfig } from './cli.js'
 import { normalize as posixNormalize } from 'node:path/posix'
 
 // ——— Copied helpers from src/host/orchestrator.ts (standalone for runner, no host transitive) ———
+// TODO: extract to shared host-free module src/runner/orchestrator-helpers.ts used by both host and runner
 
 export function buildReviewComment(opts: {
   projectPath: string
@@ -117,6 +118,7 @@ export async function postReviewFindings(findings: ReviewFinding[], config: Gitl
 
 export async function runOnce(cfg: RunnerConfig, deps: {
   fetcher?: typeof fetch; postComment?: (body:string)=>Promise<void>;
+  postFindings?: typeof postReviewFindings;
   createAgent?: (cfg: RunnerConfig, changes: unknown)=>Promise<{findings:any[]; summary:string}>
 } = {}) {
   const t0 = Date.now()
@@ -126,15 +128,17 @@ export async function runOnce(cfg: RunnerConfig, deps: {
   const raw = deps.createAgent
     ? await deps.createAgent(cfg, changes)
     : { findings: [], summary: `Diff-only review for !${cfg.mrIid}: ${changes.changes.length} file(s)` }
+  // Normalize: brief test mock returns {summary, failures} without findings — tolerate both shapes
   const agentResult = { summary: (raw as any).summary ?? '', findings: (raw as any).findings ?? [] }
   const failures: string[] = []
+  const doPostFindings = deps.postFindings ?? postReviewFindings
   if (!cfg.dryRun && agentResult.findings.length > 0) {
     try {
-      await postReviewFindings(agentResult.findings, { baseUrl: cfg.gitlabBaseUrl, token: cfg.gitlabToken, projectId: cfg.sourceProjectId, mrIid: cfg.mrIid, fetcher } as any)
+      await doPostFindings(agentResult.findings, { baseUrl: cfg.gitlabBaseUrl, token: cfg.gitlabToken, projectId: cfg.sourceProjectId, mrIid: cfg.mrIid, fetcher } as any)
     } catch (e) { failures.push(String(e)) }
   }
   const comment = buildReviewComment({ projectPath: `project/${cfg.sourceProjectId}`, mrIid: cfg.mrIid, gitlabBaseUrl: cfg.gitlabBaseUrl, mode: cfg.mode, summary: agentResult.summary, failures, durationMs: Date.now() - t0, isDiffOnly: true })
   if (!cfg.dryRun && deps.postComment) await deps.postComment(comment).catch(e => failures.push(String(e)))
-  void detail
-  return { summary: agentResult.summary, failures, durationMs: Date.now() - t0 }
+  const headSha = (detail as any).headSha ?? (detail as any).sha ?? 'unknown'
+  return { summary: agentResult.summary, failures, durationMs: Date.now() - t0, headSha }
 }
