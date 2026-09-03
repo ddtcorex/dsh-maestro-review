@@ -92,6 +92,28 @@ export function countFindingSeverities(findings: ReviewFinding[]): Partial<Recor
   return counts
 }
 
+export interface ReviewerScopePromptOpts {
+  scopeKind: 'discussion' | 'full'
+  discussionId?: string
+  path?: string
+  line?: number
+  mode?: string
+  profileInstruction: string
+}
+
+/**
+ * Reviewer scope prompt. Static analysis is mandatory: reviewers skipped
+ * govard_audit_lint for whole rounds (no lint signal at all), so the prompt
+ * requires at least one call before report_review_findings. Pure for testing.
+ */
+export function buildReviewerScopePrompt(opts: ReviewerScopePromptOpts): string {
+  const lintRule = 'LINT RULE: you MUST call govard_audit_lint at least once (scope "diff"; the MR base default is already wired, no base arg needed) before report_review_findings. A review with no lint call is incomplete.'
+  if (opts.scopeKind === 'discussion') {
+    return `${opts.profileInstruction}Review only the requested inline discussion ${opts.discussionId} at ${opts.path}:${opts.line}. Do not review unrelated files or start a broad audit. Call gitlab_get_mr_diff, then gitlab_get_file_diff for the file under review, then call report_review_findings exactly once when done. ${lintRule}`
+  }
+  return `${opts.profileInstruction}Review this merge request (${opts.mode} mode). Call gitlab_list_own_review_threads and gitlab_get_mr_diff first, then gitlab_get_file_diff per file you inspect (inline results never spill), then call report_review_findings exactly once when done. ${lintRule} DEDUP RULE: when a finding matches the substance of an existing own thread (same file and same underlying issue, even if worded differently — including resolved threads, whose reply reopens them), report it as {status: "reply", discussionId} instead of posting a new thread. Use status "new" only for issues with no matching thread.`
+}
+
 /**
  * Build a user-friendly GitLab Markdown comment for a completed review.
  * Shared design language with `reviewDigestText` (Telegram HTML) — same
@@ -942,8 +964,8 @@ export function apply(ctx: Context, config: Config): void {
           ? 'This is a diff-only review with no local checkout or Magento environment. Do not claim that tests, static analysis, or Magento runtime validation ran. '
           : `Call maestro_load_review_profile with {"profile":"${reviewProfile}"} before examining code. `
         let scopePrompt = payload.scope.kind === 'discussion'
-          ? `${profileInstruction}Review only the requested inline discussion ${payload.scope.discussionId} at ${payload.scope.path}:${payload.scope.line}. Do not review unrelated files or start a broad audit. Call gitlab_get_mr_diff, then gitlab_get_file_diff for the file under review, then call report_review_findings exactly once when done.`
-          : `${profileInstruction}Review this merge request (${payload.mode} mode). Call gitlab_list_own_review_threads and gitlab_get_mr_diff first, then gitlab_get_file_diff per file you inspect (inline results never spill), then call report_review_findings exactly once when done. DEDUP RULE: when a finding matches the substance of an existing own thread (same file and same underlying issue, even if worded differently — including resolved threads, whose reply reopens them), report it as {status: "reply", discussionId} instead of posting a new thread. Use status "new" only for issues with no matching thread.`
+          ? buildReviewerScopePrompt({ scopeKind: 'discussion', discussionId: payload.scope.discussionId, path: payload.scope.path, line: payload.scope.line, profileInstruction })
+          : buildReviewerScopePrompt({ scopeKind: 'full', mode: payload.mode, profileInstruction })
         if (incrementalBlock !== undefined) scopePrompt = `${incrementalBlock}\n\n${scopePrompt}`
         handle.agent.followup(createUserMessage({
           content: [{ type: 'text', text: scopePrompt }],
