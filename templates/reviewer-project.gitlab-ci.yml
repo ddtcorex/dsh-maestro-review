@@ -1,0 +1,14 @@
+# ddtcorex/maestro-reviewer — dedicated reviewer project
+# Required CI variables (Protected + Masked): MAESTRO_GITLAB_TOKEN, DEEPSEEK_API_KEY
+# Optional: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, REVIEW_MODE (quick|deep)
+# GIT_STRATEGY none — runner fetches diff via API, no checkout of reviewer repo
+# Secrets stay in this project only — source trigger job carries no secrets (fork-safe)
+# Trigger Token fallback: if trigger: project is not allowed, use curl with $MAESTRO_TRIGGER_TOKEN (trigger-only scope)
+# strategy: depend — source pipeline waits for reviewer status (optional, shows MR widget)
+review:
+  stage: review
+  image: registry.ddtcorex.com/maestro-reviewer:0.1.0
+  rules: [{ if: $CI_PIPELINE_SOURCE == "pipeline" }, { if: $CI_PIPELINE_SOURCE == "trigger" }, { if: $CI_PIPELINE_SOURCE == "web", when: manual }]
+  variables: { GIT_STRATEGY: none }
+  script: ['/entrypoint.sh review']
+  artifacts: { when: always, expire_in: 1 week, paths: [review-report.json, review-report.md] }
