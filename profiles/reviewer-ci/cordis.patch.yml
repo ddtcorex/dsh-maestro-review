@@ -1,0 +1,33 @@
+# profiles/reviewer-ci/cordis.patch.yml — CI-only profile: no webhook, no HTTP server.
+#
+# `dsh-base` (see dsh.profile.bundles in package.json) already self-composes its
+# own ~80-row cordis.patch.yml (it ships a dsh.bundle.patch field) — this file
+# only adds the rows dsh-base doesn't already provide.
+#
+# `agent-presets` is copied verbatim from
+# deepseek-harness/packages/bundle/web-app/cordis.patch.yml: @deepseek-ai/dsh-agent-presets
+# ships no dsh.bundle.patch of its own (confirmed — no "dsh" field in its package.json),
+# so it never self-composes; every profile that wants it must insert this row itself,
+# exactly as web-app does.
+- insert:
+    - id: agent-presets
+      name: '@deepseek-ai/dsh-agent-presets'
+      config:
+        default: standard
+
+    # projectMappings is deliberately empty — this profile only serves the
+    # diff-only review path (phase 1, quick mode), matching the non-goal
+    # "no full-stack govard env up in CI in phase 1". gitlabBaseUrl must read
+    # GITLAB_HOST at runtime (not a static placeholder) since a source project
+    # can point ci-trigger.ts at any GitLab host via its own CI variables.
+    - id: maestro-review-orchestrator
+      name: '@ddtcorex/dsh-maestro-review/lib/orchestrator.js'
+      config:
+        gitlabBaseUrl: !!js process.env.GITLAB_HOST ? 'https://' + process.env.GITLAB_HOST : ''
+        gitlabToken: !!js process.env.MAESTRO_GITLAB_TOKEN
+        botUsername: maestro-bot
+        projectMappings: []
+        agentTimeoutMs: 1200000
+
+    - id: maestro-review-ci-trigger
+      name: '@ddtcorex/dsh-maestro-review/lib/providers/ci-trigger.js'
