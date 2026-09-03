@@ -19,7 +19,7 @@ export interface Config {
 export function apply(ctx: Context, config: Config): void {
   ctx.tools.register(defineTool({
     name: 'report_review_findings',
-    description: 'Submit your complete list of review findings exactly once, when done analyzing. Each finding is {status: "new", path, line, body} for a location with no existing thread, or {status: "reply", discussionId, body} to update an existing thread returned by gitlab_list_own_review_threads.',
+    description: 'Submit your complete list of review findings exactly once, when done analyzing. Each finding is {status: "new", path, line, body} for a location with no existing thread, or {status: "reply", discussionId, body} to update an existing thread returned by gitlab_list_own_review_threads (reply to a resolved thread reopens it — prefer reply over new when the substance matches).',
     parameters: {
       findings: {
         type: 'array',
