@@ -453,6 +453,33 @@ function assertSafeId(value: number, label: string): void {
   }
 }
 
+/**
+ * Read an agent session's transcript for the auditor's final output across
+ * host/session API skew: hosts built from the harness checkout expose
+ * `ownEvents()`/`snapshotEvents()` with no `.events` getter, while older
+ * packaged `@deepseek-ai/dsh-session` builds expose only the `.events`
+ * getter. `ownEvents()` (child-owned suffix, no fork prefix) matches
+ * `finalAssistantOutput`'s documented input best, so it wins when present.
+ * Returns `[]` — never throws — when no event source exists.
+ */
+export function auditorOutputFromSession(session: unknown) {
+  const candidate = session as {
+    ownEvents?: unknown
+    snapshotEvents?: unknown
+    events?: unknown
+  } | null | undefined
+  let events: unknown
+  if (typeof candidate?.ownEvents === 'function') {
+    events = (candidate.ownEvents as () => unknown)()
+  } else if (typeof candidate?.snapshotEvents === 'function') {
+    events = (candidate.snapshotEvents as () => unknown)()
+  } else {
+    events = candidate?.events
+  }
+  if (!Array.isArray(events)) return []
+  return finalAssistantOutput(events as Parameters<typeof finalAssistantOutput>[0]) ?? []
+}
+
 /** Full review + performance audit; resolves to the comment body that was posted. */
 export async function runReviewAndAudit(payload: ReviewRequest, deps: ReviewAndAuditDeps): Promise<string> {
   assertSafeId(payload.projectId, 'projectId')
@@ -822,7 +849,7 @@ export function apply(ctx: Context, config: Config): void {
       const prompt = 'Audit this merge request\'s performance: bring up the environment, run the test suite, look for regressions, then write a Markdown report and tear the environment down.'
       handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: prompt }], source: { kind: 'user' } }))
       await whenIdleWithTimeout(handle, effectiveAgentTimeoutMs)
-      const output = finalAssistantOutput(handle.agent.session.events) ?? []
+      const output = auditorOutputFromSession(handle.agent.session)
       const text = output.map(block => ('text' in block ? block.text : '')).join('')
       return `## Maestro Performance Audit\n\n${text}`
     } finally {
