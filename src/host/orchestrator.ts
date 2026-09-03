@@ -815,10 +815,20 @@ const GOVARD_CONTAINER_WORKDIR = '/var/www/html'
  * read-only into the PHP services. A host-side symlink alone dangles inside
  * containers (absolute host path), so container tools (phpunit) need this
  * bind to see real dependencies.
+ *
+ * The project mount (`.`) MUST be repeated first: govard merges overrides
+ * with MergeMap, which REPLACES lists instead of appending — an override
+ * carrying only the vendor bind would wipe `.:<workdir>` and leave the
+ * container docroot holding nothing but vendor/. Relative `.` resolves
+ * against the project root because govard passes --project-directory.
  */
-export function buildVendorOverrideYaml(vendorHostPath: string): string {
-  const bind = `${vendorHostPath}:${GOVARD_CONTAINER_WORKDIR}/vendor:ro`
-  const service = `    volumes:\n      - ${bind}\n`
+export function buildVendorOverrideYaml(vendorHostPath: string, envHostPath?: string, containerWorkDir: string = GOVARD_CONTAINER_WORKDIR): string {
+  const volumes = [
+    `.:${containerWorkDir}`,
+    `${vendorHostPath}:${containerWorkDir}/vendor:ro`,
+    ...(envHostPath !== undefined ? [`${envHostPath}:${containerWorkDir}/app/etc/env.php:ro`] : []),
+  ]
+  const service = `    volumes:\n${volumes.map((v) => `      - ${v}\n`).join('')}`
   return `services:\n  php:\n${service}  php-debug:\n${service}`
 }
 
@@ -838,7 +848,16 @@ export async function writeContainerVendorOverride(localRepoPath: string, worktr
   if (wtLink?.isSymbolicLink() !== true && await vendorHasAutoload(worktreePath)) return undefined
   const overridePath = join(worktreePath, '.govard', 'docker-compose.override.yml')
   await mkdir(join(worktreePath, '.govard'), { recursive: true })
-  await writeFile(overridePath, buildVendorOverrideYaml(vendorHostPath), 'utf-8')
+  // A linked env.php dangles in-container like the vendor symlink did — bind
+  // the real file over it when the primary checkout carries one.
+  const envHostPath = join(localRepoPath, 'app', 'etc', 'env.php')
+  let envBind: string | undefined
+  try {
+    if ((await stat(envHostPath)).isFile()) envBind = envHostPath
+  } catch {
+    envBind = undefined
+  }
+  await writeFile(overridePath, buildVendorOverrideYaml(vendorHostPath, envBind), 'utf-8')
   console.error(`maestro-orchestrator: container vendor bind ${vendorHostPath} -> ${GOVARD_CONTAINER_WORKDIR}/vendor (ro) for ${worktreePath}`)
   return overridePath
 }

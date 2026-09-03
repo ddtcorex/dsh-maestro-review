@@ -5,11 +5,26 @@ import { join } from 'node:path'
 import { buildVendorOverrideYaml, writeContainerVendorOverride } from '../src/host/orchestrator.js'
 
 describe('buildVendorOverrideYaml', () => {
-  it('binds the host vendor dir read-only into php services', () => {
+  it('keeps the project mount first, then the read-only vendor bind (govard MergeMap replaces lists)', () => {
     const yaml = buildVendorOverrideYaml('/home/kai/Work/htdocs/bebe9/vendor')
     expect(yaml).toContain('php:')
     expect(yaml).toContain('php-debug:')
+    expect(yaml).toContain('.:/var/www/html')
     expect(yaml).toContain('/home/kai/Work/htdocs/bebe9/vendor:/var/www/html/vendor:ro')
+    expect(yaml.indexOf('.:/var/www/html')).toBeLessThan(yaml.indexOf('/home/kai/Work/htdocs/bebe9/vendor'))
+  })
+  it('honors a custom container workdir', () => {
+    const yaml = buildVendorOverrideYaml('/v/vendor', undefined, '/app')
+    expect(yaml).toContain('.:/app')
+    expect(yaml).toContain('/v/vendor:/app/vendor:ro')
+  })
+  it('binds a linked env.php file when given (host symlinks dangle in-container)', () => {
+    const yaml = buildVendorOverrideYaml('/v/vendor', '/c/app/etc/env.php')
+    expect(yaml).toContain('/c/app/etc/env.php:/var/www/html/app/etc/env.php:ro')
+  })
+  it('omits the env bind when no env file is linked', () => {
+    const yaml = buildVendorOverrideYaml('/v/vendor')
+    expect(yaml).not.toContain('env.php')
   })
 })
 
