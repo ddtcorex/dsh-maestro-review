@@ -1,0 +1,14 @@
+# Source project — trigger job (fork-safe, no secrets)
+# This job only forwards project/IID/host to the reviewer pipeline.
+# Secrets live in the reviewer project (Protected+Masked) — none here.
+# strategy: depend — source MR waits for reviewer pipeline (shows status on MR)
+# Fallback: if cross-project trigger is not permitted, use Trigger Token via curl:
+#   curl --request POST --form token=$TRIGGER_TOKEN --form ref=main
+#        --form variables[SOURCE_PROJECT_ID]=$CI_PROJECT_ID
+#        --form variables[MR_IID]=$CI_MERGE_REQUEST_IID
+#        "https://${CI_SERVER_HOST}/api/v4/projects/<REVIEWER_PROJECT_ID>/trigger/pipeline"
+maestro:trigger-review:
+  stage: review
+  rules: [{ if: $CI_PIPELINE_SOURCE == "merge_request_event" }]
+  trigger: { project: ddtcorex/maestro-reviewer, branch: main, strategy: depend }
+  variables: { SOURCE_PROJECT_ID: $CI_PROJECT_ID, MR_IID: $CI_MERGE_REQUEST_IID, GITLAB_HOST: $CI_SERVER_HOST }

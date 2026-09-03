@@ -45,7 +45,17 @@ export async function main(argv: string[] = process.argv.slice(2), env: Record<s
     })
     if (!res.ok) throw new Error(`GitLab API error ${res.status}: ${await res.text()}`)
   }
-  const result = await runOnce(cfg, { postComment } as any)
+  let result: Awaited<ReturnType<typeof runOnce>>
+  try {
+    result = await runOnce(cfg, { postComment } as any)
+  } catch (e) {
+    if (cfg.dryRun) {
+      console.warn(`[dry-run] fetch failed (expected with dummy host): ${e instanceof Error ? e.message : String(e)}`)
+      result = { summary: `[dry-run] fetch skipped: ${e instanceof Error ? e.message : String(e)}`, failures: [String(e)], durationMs: 0, headSha: 'dry-run' } as any
+    } else {
+      throw e
+    }
+  }
   const headSha = (result as any).headSha ?? 'unknown'
   const report = buildReportJson(cfg, result, headSha) as Record<string, unknown>
   const cwd = process.cwd()
