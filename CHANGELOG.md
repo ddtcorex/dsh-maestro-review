@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-09-03
+
+### Removed
+
+- **Dead `supervisorModel` setting** — removed from `MaestroUserConfig` and the
+  settings-RPC savable keys (the supervisor runs a deterministic debug-agent
+  without LLM and the orchestrator never read it). Old clients sending the key
+  now get `Unknown settings key "supervisorModel"`.
+
 ## [0.3.1] - 2026-09-02
 
 ### Fixed
