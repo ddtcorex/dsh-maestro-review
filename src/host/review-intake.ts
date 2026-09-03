@@ -81,6 +81,10 @@ export function routeGitlabReviewRequest(body: unknown, botUsername: string, opt
   if (value.object_kind !== 'note' || typeof attributes.note !== 'string' || !isMentioned(attributes.note, botUsername)) return undefined
   const scope = noteScope(attributes)
   if (scope === undefined) return undefined
-  const mode: ReviewMode = /(?:^|\s)\/maestro\s+deep(?:\s|$)/i.test(attributes.note) ? 'deep' : 'quick'
+  // Deep runs the auditor (env + perf) and costs far more than quick, so the
+  // trigger stays explicit: the `/maestro deep` slash command or the natural
+  // phrase "deep review". A bare "deep" alone never triggers (too loose).
+  const note = attributes.note
+  const mode: ReviewMode = /(?:^|\s)\/maestro\s+deep(?:\s|$)/i.test(note) || /\bdeep\s+review\b/i.test(note) ? 'deep' : 'quick'
   return { ...payload, trigger: 'mention', mode, scope }
 }
