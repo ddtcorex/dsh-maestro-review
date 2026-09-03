@@ -1,4 +1,4 @@
-import { mkdir, writeFile, symlink, stat } from 'node:fs/promises'
+import { mkdir, writeFile, symlink, stat, lstat } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { promisify } from 'node:util'
@@ -739,6 +739,7 @@ export async function ensureWorktree(localRepoPath: string, sourceBranch: string
   await execFileAsync('git', ['worktree', 'add', '--', worktreePath, `origin/${sourceBranch}`], { cwd: localRepoPath, timeout: GIT_TIMEOUT_MS })
   await writeFile(join(worktreePath, '.govard.local.yml'), govardWorktreeOverride(projectId, mrIid, keySuffix), 'utf-8')
   await linkVendorIntoWorktree(localRepoPath, worktreePath)
+  await writeContainerVendorOverride(localRepoPath, worktreePath)
   return worktreePath
 }
 
@@ -784,6 +785,54 @@ export async function linkVendorIntoWorktree(localRepoPath: string, worktreePath
     console.error(`maestro-orchestrator: no vendor/ in ${localRepoPath} — worktree ${worktreePath} runs without shared dependencies`)
   }
   return linked
+}
+
+/** Container path of the project root inside govard services. */
+const GOVARD_CONTAINER_WORKDIR = '/var/www/html'
+
+/**
+ * Render a compose override that bind-mounts the primary checkout's vendor/
+ * read-only into the PHP services. A host-side symlink alone dangles inside
+ * containers (absolute host path), so container tools (phpunit) need this
+ * bind to see real dependencies.
+ */
+export function buildVendorOverrideYaml(vendorHostPath: string): string {
+  const bind = `${vendorHostPath}:${GOVARD_CONTAINER_WORKDIR}/vendor:ro`
+  const service = `    volumes:\n      - ${bind}\n`
+  return `services:\n  php:\n${service}  php-debug:\n${service}`
+}
+
+/**
+ * Drop the vendor bind override into the worktree (merged by govard via
+ * `.govard/docker-compose.override.yml`). Skips when the primary checkout
+ * has no vendor/ or the worktree already carries its own real vendor dir
+ * (never shadow real deps with a possibly stale bind). Returns the written
+ * path, or undefined when skipped.
+ */
+export async function writeContainerVendorOverride(localRepoPath: string, worktreePath: string): Promise<string | undefined> {
+  const vendorHostPath = join(localRepoPath, 'vendor')
+  try {
+    if (!(await stat(vendorHostPath)).isDirectory()) return undefined
+  } catch {
+    return undefined
+  }
+  try {
+    const wtVendor = join(worktreePath, 'vendor')
+    const lst = await lstat(wtVendor).catch(() => undefined)
+    // A real directory of its own wins over the bind; our own symlink (or
+    // nothing) means the bind is safe — the mount covers the link target.
+    if (lst !== undefined && !lst.isSymbolicLink()) {
+      const st = await stat(wtVendor).catch(() => undefined)
+      if (st !== undefined && st.isDirectory()) return undefined
+    }
+  } catch {
+    // Stat race — fall through and attempt the write.
+  }
+  const overridePath = join(worktreePath, '.govard', 'docker-compose.override.yml')
+  await mkdir(join(worktreePath, '.govard'), { recursive: true })
+  await writeFile(overridePath, buildVendorOverrideYaml(vendorHostPath), 'utf-8')
+  console.error(`maestro-orchestrator: container vendor bind ${vendorHostPath} -> ${GOVARD_CONTAINER_WORKDIR}/vendor (ro) for ${worktreePath}`)
+  return overridePath
 }
 
 async function removeWorktree(worktreePath: string): Promise<void> {
