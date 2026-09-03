@@ -815,10 +815,15 @@ const GOVARD_CONTAINER_WORKDIR = '/var/www/html'
  * read-only into the PHP services. A host-side symlink alone dangles inside
  * containers (absolute host path), so container tools (phpunit) need this
  * bind to see real dependencies.
+ *
+ * The project mount (`.`) MUST be repeated first: govard merges overrides
+ * with MergeMap, which REPLACES lists instead of appending — an override
+ * carrying only the vendor bind would wipe `.:<workdir>` and leave the
+ * container docroot holding nothing but vendor/. Relative `.` resolves
+ * against the project root because govard passes --project-directory.
  */
-export function buildVendorOverrideYaml(vendorHostPath: string): string {
-  const bind = `${vendorHostPath}:${GOVARD_CONTAINER_WORKDIR}/vendor:ro`
-  const service = `    volumes:\n      - ${bind}\n`
+export function buildVendorOverrideYaml(vendorHostPath: string, containerWorkDir: string = GOVARD_CONTAINER_WORKDIR): string {
+  const service = `    volumes:\n      - .:${containerWorkDir}\n      - ${vendorHostPath}:${containerWorkDir}/vendor:ro\n`
   return `services:\n  php:\n${service}  php-debug:\n${service}`
 }
 

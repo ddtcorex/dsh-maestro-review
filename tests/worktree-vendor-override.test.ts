@@ -5,11 +5,18 @@ import { join } from 'node:path'
 import { buildVendorOverrideYaml, writeContainerVendorOverride } from '../src/host/orchestrator.js'
 
 describe('buildVendorOverrideYaml', () => {
-  it('binds the host vendor dir read-only into php services', () => {
+  it('keeps the project mount first, then the read-only vendor bind (govard MergeMap replaces lists)', () => {
     const yaml = buildVendorOverrideYaml('/home/kai/Work/htdocs/bebe9/vendor')
     expect(yaml).toContain('php:')
     expect(yaml).toContain('php-debug:')
+    expect(yaml).toContain('.:/var/www/html')
     expect(yaml).toContain('/home/kai/Work/htdocs/bebe9/vendor:/var/www/html/vendor:ro')
+    expect(yaml.indexOf('.:/var/www/html')).toBeLessThan(yaml.indexOf('/home/kai/Work/htdocs/bebe9/vendor'))
+  })
+  it('honors a custom container workdir', () => {
+    const yaml = buildVendorOverrideYaml('/v/vendor', '/app')
+    expect(yaml).toContain('.:/app')
+    expect(yaml).toContain('/v/vendor:/app/vendor:ro')
   })
 })
 
