@@ -1,4 +1,4 @@
-# app/bebe9/magento — source project
+# example-group/example-project — source project (copy this template into YOUR source project)
 stages: [review]
 
 # Only runs when there is an MR (fork MRs run fine too — this job has no secrets)
