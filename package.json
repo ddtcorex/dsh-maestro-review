@@ -13,15 +13,19 @@
   },
   "files": [
     "README.md",
+    "cordis.patch.yml",
     "lib",
     "src",
     "presets",
-    "client"
+    "client",
+    "profiles",
+    "templates"
   ],
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
-    "verify": "tsc --noEmit"
+    "verify": "tsc --noEmit",
+    "docker:build": "docker build -f docker/Dockerfile -t ddtcorex/maestro-reviewer:0.3.2 -t ddtcorex/maestro-reviewer:latest ../.."
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",

@@ -13,7 +13,7 @@
   "dependencies": {
     "@deepseek-ai/dsh-base": "link:../../deepseek-harness/packages/bundle/base",
     "@deepseek-ai/dsh-agent-presets": "link:../../deepseek-harness/packages/preset/agent-presets",
-    "@ddtcorex/dsh-maestro-review": "^0.3.1",
+    "@ddtcorex/dsh-maestro-review": "link:../../packages/dsh-maestro-review",
     "@ddtcorex/maestro-skills": "^2.11.0"
   }
 }

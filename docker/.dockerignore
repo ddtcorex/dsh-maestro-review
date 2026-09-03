@@ -1,0 +1,16 @@
+# NOTE (verified 2026-09-03): the build context is the maestro-harness
+# workspace root, not this package directory — Docker only auto-discovers a
+# .dockerignore that sits at the context root, and this docker buildx (v0.37.0)
+# has no --ignorefile/--ignore-file flag to point at a different one. This
+# file therefore does not currently reduce what gets sent to the daemon; it's
+# kept for documentation and for local `docker build` runs from inside this
+# directory with `.` as context. Correctness is unaffected either way — every
+# COPY in the Dockerfile whitelists an exact path, so nothing extra reaches
+# the final image regardless of what's in the build context tar.
+node_modules
+.git
+tests
+*.md
+deepseek-harness/node_modules
+deepseek-harness/**/lib
+deepseek-harness/**/node_modules

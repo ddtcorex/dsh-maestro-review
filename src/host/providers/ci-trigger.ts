@@ -85,10 +85,17 @@ export function apply(ctx: Context): void {
     void (async () => {
       try {
         const config = parseCiEnvConfig(process.env)
+        console.log(`[review] ci-trigger starting: project ${config.sourceProjectId} !${config.mrIid} mode=${config.mode} dryRun=${config.dryRun}`)
         const result = config.dryRun
           ? { ok: true, summary: '[dry-run] config valid, skipping review', failures: [], durationMs: 0 }
           : await runCiTrigger(ctx, config)
-        ctx.get('appExit')?.(result.ok ? 0 : 1)
+        console.log(`[review] ci-trigger finished: ok=${result.ok} summary=${JSON.stringify(result.summary)} failures=${result.failures.length}`)
+        const exit = ctx.get('appExit')
+        if (exit === undefined) {
+          console.error('[review] ctx.get(\'appExit\') is undefined — the launcher did not provide it, process cannot signal its real exit code')
+        } else {
+          exit(result.ok ? 0 : 1)
+        }
       } catch (err) {
         console.error('maestro-review-ci-trigger:', err instanceof Error ? err.message : String(err))
         ctx.get('appExit')?.(1)
