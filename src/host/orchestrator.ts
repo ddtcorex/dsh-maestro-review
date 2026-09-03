@@ -689,7 +689,9 @@ export function isBranchNotFoundError(err: unknown): boolean {
  */
 export function govardWorktreeOverride(projectId: number, mrIid: number, keySuffix?: string): string {
   const name = `maestro-mr-${projectId}-${mrIid}${keySuffix === undefined ? '' : `-${keySuffix}`}`
-  return `project_name: ${name}\ndomain: ${name}.test\n`
+  // Xdebug stays off in review envs: the auditor runs no coverage, and an
+  // enabled Xdebug trips govard's lint perf-tax guard (exit 1, 0 findings).
+  return `project_name: ${name}\ndomain: ${name}.test\nstack:\n  features:\n    xdebug: false\n`
 }
 
 /**
@@ -812,7 +814,7 @@ const GOVARD_CONTAINER_WORKDIR = '/var/www/html'
 
 /**
  * Render a compose override that bind-mounts the primary checkout's vendor/
- * read-only into the PHP services. A host-side symlink alone dangles inside
+ * read-only into the php service. A host-side symlink alone dangles inside
  * containers (absolute host path), so container tools (phpunit) need this
  * bind to see real dependencies.
  *
@@ -821,6 +823,10 @@ const GOVARD_CONTAINER_WORKDIR = '/var/www/html'
  * carrying only the vendor bind would wipe `.:<workdir>` and leave the
  * container docroot holding nothing but vendor/. Relative `.` resolves
  * against the project root because govard passes --project-directory.
+ *
+ * Only the always-present `php` service is targeted: `php-debug` drops out
+ * of the rendered base when xdebug is off, and a volumes-only override
+ * entry would recreate it as a hollow service that fails compose validation.
  */
 export function buildVendorOverrideYaml(vendorHostPath: string, envHostPath?: string, containerWorkDir: string = GOVARD_CONTAINER_WORKDIR): string {
   const volumes = [
@@ -829,7 +835,7 @@ export function buildVendorOverrideYaml(vendorHostPath: string, envHostPath?: st
     ...(envHostPath !== undefined ? [`${envHostPath}:${containerWorkDir}/app/etc/env.php:ro`] : []),
   ]
   const service = `    volumes:\n${volumes.map((v) => `      - ${v}\n`).join('')}`
-  return `services:\n  php:\n${service}  php-debug:\n${service}`
+  return `services:\n  php:\n${service}`
 }
 
 /**
@@ -920,7 +926,7 @@ export function apply(ctx: Context, config: Config): void {
               await agentCtx.plugin(ModuleCheckTool, { rootPath: worktreePath })
               await agentCtx.plugin(PhtmlEscapeScanTool, { rootPath: worktreePath })
               await agentCtx.plugin(ScopeSplitTool, { rootPath: worktreePath })
-              await agentCtx.plugin(GovardAuditLintTool, { rootPath: worktreePath, defaultBase: lintDefaultBase })
+              await agentCtx.plugin(GovardAuditLintTool, { rootPath: worktreePath, defaultBase: lintDefaultBase, allowXdebug: true })
               await agentCtx.plugin(PerfLogStatsTool, { rootPath: worktreePath })
             }
           },

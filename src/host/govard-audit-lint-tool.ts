@@ -7,7 +7,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 
 export const name='maestro-govard-audit-lint-tool'
 export const inject=['tools']
-export const Config:z<{rootPath?:string, timeoutMs?:number, defaultBase?:string}> = z.object({rootPath:z.string(), timeoutMs:z.number(), defaultBase:z.string()})
+export const Config:z<{rootPath?:string, timeoutMs?:number, defaultBase?:string, allowXdebug?:boolean}> = z.object({rootPath:z.string(), timeoutMs:z.number(), defaultBase:z.string(), allowXdebug:z.boolean()})
 
 export interface AuditLintOptions {
   checks?: string[]
@@ -18,6 +18,7 @@ export interface AuditLintOptions {
   noLintResultCache?: boolean
   timeout?: string
   lintProvider?: string
+  allowXdebug?: boolean
 }
 
 /** Explicit call base wins, then the review-wired default (MR base_sha). */
@@ -36,6 +37,7 @@ export function buildAuditCliArgs(a: AuditLintOptions): string[] {
   if(base) cliArgs.push('--base', base)
   if(a.phpVersions && a.phpVersions.length) cliArgs.push('--php', a.phpVersions.join(','))
   if(a.noLintResultCache) cliArgs.push('--no-lint-result-cache')
+  if(a.allowXdebug) cliArgs.push('--allow-xdebug')
   return cliArgs
 }
 
@@ -120,10 +122,13 @@ function run(cmd:string, args:string[], cwd:string, timeoutMs:number):Promise<{c
   })
 }
 
-export function apply(ctx:Context, config:{rootPath?:string, timeoutMs?:number, defaultBase?:string}={}):void{
+export function apply(ctx:Context, config:{rootPath?:string, timeoutMs?:number, defaultBase?:string, allowXdebug?:boolean}={}):void{
   const configuredRoot=config.rootPath
   const defaultTimeout=config.timeoutMs ?? DEFAULT_TIMEOUT
   const defaultBase=config.defaultBase
+  // Review worktrees disable xdebug via .govard.local.yml, but govard's lint
+  // guard probes the base .govard.yml only — so the mount opts out explicitly.
+  const allowXdebug=config.allowXdebug ?? false
   ctx.effect(()=>ctx.tools.register(defineTool({
     name:'govard_audit_lint',
     description:'Run govard audit --checks lint --format json and return structured phpcs/phpstan results. Use before hand-parsing text. Govard 1.67+ uses --timeout auto (framework-aware 90s-30m, 22.5m for wordpress/magento2) by default. scope "diff" requires a base ref: pass base, or rely on the wired defaultBase (MR base_sha) when present.',
@@ -168,13 +173,13 @@ export function apply(ctx:Context, config:{rootPath?:string, timeoutMs?:number, 
       const timeoutMs=(args as {timeoutMs?:number}).timeoutMs ?? defaultTimeout
       if(timeoutMs<5000 || timeoutMs>1_800_000) return {text:'timeoutMs out of range 5000-1800000 (5s-30m). Use --timeout auto for framework-aware estimation.', truncated:false} as never
 
-      const a = args as {checks?:string[]; mode?:string; scope?:string; base?:string; phpVersions?:string[]; noLintResultCache?:boolean; timeout?:string; lintProvider?:string}
+      const a = args as {checks?:string[]; mode?:string; scope?:string; base?:string; phpVersions?:string[]; noLintResultCache?:boolean; timeout?:string; lintProvider?:string; allowXdebug?:boolean}
       const scope = a.scope
       const base = resolveLintBase(a.base, defaultBase)
       if (scope === 'diff' && base === undefined) {
         return {text:'scope "diff" requires a base ref (govard --base): pass base explicitly (e.g. origin/master or the MR base_sha) or mount this tool with defaultBase.', truncated:false} as never
       }
-      const cliArgs = buildAuditCliArgs({ ...a, base })
+      const cliArgs = buildAuditCliArgs({ ...a, base, allowXdebug: a.allowXdebug ?? allowXdebug })
       const result=await run('govard', cliArgs, worktreePath, timeoutMs)
       if(result.timedOut){
         return {ok:false, exitCode: result.code ?? 124, timedOut:true, worktreePath, lint:{phpcs:{violations:[]}, phpstan:{errors:[]}, pubMediaGuard:{violations:[]}}, summary:{status:null, phpVersions:[], matrixComplete:false, findingCount:0, truncated:false}, rawJson:{}, errors:[{code:'timeout', message:`timed out after ${timeoutMs}ms` }], diagnostics:result.stderr.slice(0,4000)} as never
