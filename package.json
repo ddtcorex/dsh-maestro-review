@@ -18,6 +18,9 @@
     "presets",
     "client"
   ],
+  "bin": {
+    "runner": "tsx src/runner/cli.ts"
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
