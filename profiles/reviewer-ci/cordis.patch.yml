@@ -5,7 +5,7 @@
 # @ddtcorex/dsh-maestro-review itself — self-composing 3 rows: maestro-review-webhook,
 # maestro-review-orchestrator, maestro-review-settings-rpc (verified 2026-09-03: using
 # `insert:` for a row id the bundle already provides throws "duplicate loader entry id"
-# at boot). This file OVERRIDES two of those rows' config (bare `- id: X` entries, no
+# at boot). This file touches all three of those rows (bare `- id: X` entries, no
 # `insert:` wrapper — the same pattern deepseek-harness's own headless bundle uses to
 # override `system-prompt`/`tools`) instead of re-inserting them.
 
@@ -13,6 +13,14 @@
 # web/web-app bundle) — disable it explicitly rather than leaving it waiting forever
 # on a service that will never arrive.
 - id: maestro-review-webhook
+  disabled: true
+
+# maestro-review-settings-rpc serves the Settings UI over the web `connection`
+# (via `maestroTunnel`) — meaningless in a CI container where neither service
+# exists. Verified 2026-09-04: leaving it enabled fails boot with
+# "1 entry did not activate .../settings-rpc.js: pending (waiting for
+# services: connection, maestroTunnel)".
+- id: maestro-review-settings-rpc
   disabled: true
 
 # Override the auto-composed row's placeholder config. projectMappings is
