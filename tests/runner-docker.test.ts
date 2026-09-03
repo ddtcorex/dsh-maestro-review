@@ -14,6 +14,8 @@ describe('docker', () => {
     expect(df).toMatch(/pnpm --dir deepseek-harness (run )?build:lib/)
     expect(df).toMatch(/COPY packages\/dsh-maestro-review\/profiles\/reviewer-ci profiles\/reviewer-ci/)
     expect(df).toMatch(/ENV DSH_HOME=\/app\s*$/m)
+    expect(df).toMatch(/\.agent-presets\/dsh-maestro-reviewer/)
+    expect(df).toMatch(/\.agent-presets\/dsh-maestro-auditor/)
     expect(df).toMatch(/tini/)
     expect(df).toMatch(/ENTRYPOINT.*entrypoint\.sh/)
   })

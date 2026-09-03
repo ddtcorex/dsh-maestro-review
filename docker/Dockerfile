@@ -74,6 +74,15 @@ COPY --from=builder /build/deepseek-harness ./deepseek-harness
 # node_modules holds a matching relative link: to it.
 COPY --from=builder /build/packages ./packages
 COPY --from=builder /build/profiles/reviewer-ci ./profiles/reviewer-ci
+# Reviewer/auditor agent presets — orchestrator mounts preset ids
+# 'dsh-maestro-reviewer'/'dsh-maestro-auditor', and dsh-agent-presets derives the
+# id from the directory name, so the package's presets/maestro-* dirs must land
+# under the user preset root with their installed names. dsh-agent-presets always
+# scans <DSH_HOME>/.agent-presets (DSH_HOME=/app here), so bake them into the image
+# (verified 2026-09-04: without these, boot succeeds but runReview fails with
+# 'preset "dsh-maestro-reviewer" not found (available: standard, ptc, minimal, cordis)').
+COPY --from=builder /build/packages/dsh-maestro-review/presets/maestro-reviewer ./.agent-presets/dsh-maestro-reviewer
+COPY --from=builder /build/packages/dsh-maestro-review/presets/maestro-auditor ./.agent-presets/dsh-maestro-auditor
 COPY packages/dsh-maestro-review/docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
