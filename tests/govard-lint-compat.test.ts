@@ -9,7 +9,7 @@ describe('cleanJson', () => {
   })
 })
 
-const compatFinding = { tool: 'M2-LINT-COMPAT', message: 'Internal error: Class "Zend_Db_Select" not found while analysing file /source/app/code/BeBe9/X.php' }
+const compatFinding = { tool: 'M2-LINT-COMPAT', message: 'Internal error: Class "Zend_Db_Select" not found while analysing file /source/app/code/Acme/X.php' }
 const phpcsFinding = { tool: 'phpcs', path: 'a.php', line: 10, rule: 'Magento2.Security.Xss', message: 'x' }
 
 function envelope(findings: unknown[]): unknown {
