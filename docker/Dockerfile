@@ -83,12 +83,14 @@ COPY --from=builder /build/profiles/reviewer-ci ./profiles/reviewer-ci
 # 'preset "dsh-maestro-reviewer" not found (available: standard, ptc, minimal, cordis)').
 COPY --from=builder /build/packages/dsh-maestro-review/presets/maestro-reviewer ./.agent-presets/dsh-maestro-reviewer
 COPY --from=builder /build/packages/dsh-maestro-review/presets/maestro-auditor ./.agent-presets/dsh-maestro-auditor
-# Full host LLM-config mirror for model serving — dsh registers LLM adapters from
+# Host LLM-config mirror for model serving — dsh registers LLM adapters from
 # DSH_HOME settings, which is empty in a fresh container (verified 2026-09-04:
 # pinning opencode-go without this fails with 'no adapter registered for
-# provider "opencode-go"'). Mirrors the host's llm-pi-ai (omni-route, opencode-go),
-# llm-deepseek, and agent-default-model sections; holds no secrets (each key resolves
-# from its apiKeyEnv var at call time). A job-mounted /app/settings.yaml overrides it.
+# provider "opencode-go"'). Mirrors the host's opencode-go, llm-deepseek, and
+# agent-default-model sections; the opencode model id itself is one env variable
+# (OPENCODE_MODEL, substituted by entrypoint.sh into the __OPENCODE_MODEL__
+# placeholders). Holds no secrets (each key resolves from its apiKeyEnv var at
+# call time). A job-mounted /app/settings.yaml overrides it.
 # Interactive-host sections (permission/sidebar/presets) are deliberately excluded.
 COPY packages/dsh-maestro-review/docker/ci-settings.yaml /app/settings.yaml
 COPY packages/dsh-maestro-review/docker/entrypoint.sh /entrypoint.sh

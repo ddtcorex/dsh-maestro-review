@@ -5,5 +5,23 @@ if [ -z "${MAESTRO_GITLAB_TOKEN:-}" ] || [ -z "${SOURCE_PROJECT_ID:-}" ] || [ -z
   exit 1
 fi
 export REVIEW_REPORT_DIR="$PWD"
+# The opencode model is one env variable: substitute the __OPENCODE_MODEL__
+# placeholder in the baked settings template (default muse-spark-1.3-contributor).
+# A job-mounted /app/settings.yaml has no placeholder, so this is a no-op for it.
+# The id charset guard keeps the sed substitution injection-free.
+if [ -n "${OPENCODE_MODEL:-}" ]; then
+  case "$OPENCODE_MODEL" in
+    *[!A-Za-z0-9/_+.-]*)
+      echo "[review] invalid OPENCODE_MODEL (allowed: A-Za-z0-9/_+.-)" >&2
+      exit 1
+      ;;
+  esac
+fi
+OPENCODE_MODEL="${OPENCODE_MODEL:-muse-spark-1.3-contributor}"
+export OPENCODE_MODEL
+if grep -q __OPENCODE_MODEL__ /app/settings.yaml 2>/dev/null; then
+  sed "s#__OPENCODE_MODEL__#${OPENCODE_MODEL}#g" /app/settings.yaml > /app/settings.yaml.rendered
+  mv /app/settings.yaml.rendered /app/settings.yaml
+fi
 cd /app/deepseek-harness
 exec node --import tsx/esm apps/cli/src/bin.ts --profile reviewer-ci

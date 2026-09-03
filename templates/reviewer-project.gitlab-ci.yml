@@ -27,13 +27,14 @@ review:
       - review-report.md
   # Secrets — Protected + Masked, only available on the reviewer project's protected branches
   # MAESTRO_GITLAB_TOKEN (Project Access Token, api)
-  # OPENCODE_GO_API_KEY (default review model key — serves opencode-go AND deepseek-official-via-zen)
-  # OMNI_ROUTE_API_KEY (only when REVIEW_MODEL_PROVIDER=omni-route below)
+  # OPENCODE_GO_API_KEY (review model key — serves opencode-go AND deepseek-official-via-zen)
   # TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID (optional)
+  # Opencode model (optional, one variable — default muse-spark-1.3-contributor):
+  # OPENCODE_MODEL: "muse-spark-1.3-contributor"
   # Model pin (optional, as a pair — unset both for the host-mirrored default
   #   = opencode-go/muse-spark-1.3-contributor, baked in docker/ci-settings.yaml):
-  # REVIEW_MODEL_PROVIDER: "opencode-go"             # or "omni-route" | "deepseek-official"
-  # REVIEW_MODEL: "muse-spark-1.3-contributor"       # e.g. coding-budget (omni-route), deepseek-v4-flash (deepseek-official via zen)
+  # REVIEW_MODEL_PROVIDER: "opencode-go"             # or "deepseek-official"
+  # REVIEW_MODEL: "muse-spark-1.3-contributor"       # e.g. deepseek-v4-flash (deepseek-official via zen)
   #   Only the provider's key is needed — no settings mount required. ID without
   #   provider fails the review with a provider error (not silently the wrong
   #   model); provider without ID is ignored.

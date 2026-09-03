@@ -1,46 +1,27 @@
-# docker/ci-settings.yaml — baked to /app/settings.yaml (DSH_HOME) in the reviewer image.
+# docker/ci-settings.yaml — template baked to /app/settings.yaml (DSH_HOME).
+# entrypoint.sh substitutes __OPENCODE_MODEL__ (from $OPENCODE_MODEL, default
+# muse-spark-1.3-contributor) before dsh boots, so the opencode model is one env
+# variable. A job-mounted /app/settings.yaml contains no placeholder and passes
+# through untouched.
 #
-# Full mirror of THIS host's LLM configuration (~/.dsh/settings.yaml, llm + default
-# sections only) — the reviewer container serves models exactly the way DSH does:
-# adapters register from these settings, keys resolve at call time from the env
-# var named in each apiKeyEnv (pass them with --env-file / CI secrets).
-#
+# Mirrors this host's llm-pi-ai (opencode-go), llm-deepseek, and agent-default-model
+# sections — the reviewer container serves models the way DSH does. Keys resolve
+# at call time from each apiKeyEnv (pass with --env-file / CI secrets).
 # Contains NO secrets — only route definitions, model catalogs, and env var NAMES.
-# A reviewer job that mounts its own /app/settings.yaml overrides this file entirely.
-#
-# NOTE (public image): this file ships in the public image, so the private gateway
-# hostname under omni-route travels with it (reachability still needs OMNI_ROUTE_API_KEY,
-# which is NOT here). Redact that route if the hostname must stay private.
 #
 # Sections intentionally NOT mirrored: permission/sidebar/presets/onboarding are
 # interactive-host concerns; a headless CI run must not inherit danger-full-access
 # or UI state. Only the model-serving surface is mirrored.
 llm-pi-ai:
   providers:
-    omni-route:
-      displayName: OmniRoute
-      apiKeyEnv: OMNI_ROUTE_API_KEY
-      api: openai-completions
-      baseURL: https://omniroute.ddtcorex.com/v1
-      models:
-        - id: coding-budget
-          name: Coding Budget
-        - id: coding-premium
-          name: Coding Premium
-        - id: oc/laguna-s-2.1-free
-          name: Laguna S2.1
-        - id: opencode-zen/ling-3.0-flash-fin-free
-          name: Ling 3.0 Flash
-        - id: kra/hy3
-          name: Hy3
     opencode-go:
       displayName: OpenCode Go
       apiKeyEnv: OPENCODE_GO_API_KEY
       api: openai-responses
       baseURL: https://opencode.ai/zen/go/v1
       models:
-        - id: muse-spark-1.3-contributor
-          name: Muse Spark 1.3 Contributor
+        - id: __OPENCODE_MODEL__
+          name: CI Opencode Model
 llm-deepseek:
   apiKeyEnv: OPENCODE_GO_API_KEY
   baseURL: https://opencode.ai/zen/go/v1
@@ -56,4 +37,4 @@ llm-deepseek:
         - image
 agent-default-model:
   provider: opencode-go
-  model: muse-spark-1.3-contributor
+  model: __OPENCODE_MODEL__

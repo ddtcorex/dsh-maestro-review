@@ -29,17 +29,22 @@ describe('docker', () => {
     expect(sh).toMatch(/--profile reviewer-ci"?\s*$/m)
     expect(sh).not.toMatch(/cli\.js/)
     expect(sh).toMatch(/REVIEW_REPORT_DIR/)
+    expect(sh).toMatch(/OPENCODE_MODEL/)
+    expect(sh).toMatch(/__OPENCODE_MODEL__/)
   })
 
   it('ci-settings.yaml mirrors the host LLM config with no embedded secrets', () => {
     const yml = readFileSync('docker/ci-settings.yaml', 'utf-8')
-    // all three provider surfaces the host uses
-    expect(yml).toMatch(/omni-route/)
+    // opencode-go + deepseek-via-zen; omni-route is deliberately NOT wired
     expect(yml).toMatch(/opencode-go/)
     expect(yml).toMatch(/llm-deepseek:/)
+    expect(yml).not.toMatch(/omni-route/)
+    expect(yml).not.toMatch(/OMNI_ROUTE_API_KEY/)
+    // the opencode model is one env variable, substituted by entrypoint.sh
+    // (exactly two value positions: catalog id + agent default)
+    expect(yml.match(/^\s+(?:- id|model): __OPENCODE_MODEL__$/gm)).toHaveLength(2)
     expect(yml).toMatch(/^agent-default-model:/m)
     expect(yml).toMatch(/apiKeyEnv:\s*OPENCODE_GO_API_KEY/)
-    expect(yml).toMatch(/apiKeyEnv:\s*OMNI_ROUTE_API_KEY/)
     // keys resolve from env at call time — never baked in
     expect(yml).not.toMatch(/sk-[A-Za-z0-9]{8,}/)
     expect(yml).not.toMatch(/glpat-[A-Za-z0-9_.-]{8,}/)
