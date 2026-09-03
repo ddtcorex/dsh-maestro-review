@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile, symlink, stat } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { promisify } from 'node:util'
@@ -713,7 +713,52 @@ export async function ensureWorktree(localRepoPath: string, sourceBranch: string
     .catch(() => {})
   await execFileAsync('git', ['worktree', 'add', '--', worktreePath, `origin/${sourceBranch}`], { cwd: localRepoPath, timeout: GIT_TIMEOUT_MS })
   await writeFile(join(worktreePath, '.govard.local.yml'), govardWorktreeOverride(projectId, mrIid, keySuffix), 'utf-8')
+  await linkVendorIntoWorktree(localRepoPath, worktreePath)
   return worktreePath
+}
+
+/**
+ * Share the primary checkout's `vendor/` (and `app/etc/env.php` when the
+ * auditor needs a database) into the review worktree via symlinks, so
+ * phpunit/static analysis run against real dependencies instead of falling
+ * back to static-only. Links point INTO the worktree only — the primary
+ * checkout is never written to — and `git worktree remove --force` deletes
+ * the links along with the worktree. Missing sources are a warning, not an
+ * error: the review still runs, the auditor discloses it.
+ */
+export async function linkVendorIntoWorktree(localRepoPath: string, worktreePath: string): Promise<string[]> {
+  const linked: string[] = []
+  const candidates: Array<{ source: string; target: string; dir: boolean }> = [
+    { source: join(localRepoPath, 'vendor'), target: join(worktreePath, 'vendor'), dir: true },
+    { source: join(localRepoPath, 'app', 'etc', 'env.php'), target: join(worktreePath, 'app', 'etc', 'env.php'), dir: false },
+  ]
+  let advertised = false
+  for (const { source, target, dir } of candidates) {
+    let isDir = false
+    try {
+      isDir = (await stat(source)).isDirectory()
+      if (dir !== isDir) continue
+    } catch {
+      continue
+    }
+    try {
+      if (!advertised) {
+        const sha = await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: localRepoPath, timeout: GIT_TIMEOUT_MS })
+          .then(({ stdout }) => stdout.trim()).catch(() => 'unknown')
+        console.error(`maestro-orchestrator: linking vendor from ${localRepoPath} @ ${sha} into ${worktreePath}`)
+        advertised = true
+      }
+      if (!dir) await mkdir(join(worktreePath, 'app', 'etc'), { recursive: true })
+      await symlink(source, target, dir ? 'dir' : 'file')
+      linked.push(target)
+    } catch (err) {
+      console.error(`maestro-orchestrator: failed to link ${source} into worktree:`, err)
+    }
+  }
+  if (!advertised) {
+    console.error(`maestro-orchestrator: no vendor/ in ${localRepoPath} — worktree ${worktreePath} runs without shared dependencies`)
+  }
+  return linked
 }
 
 async function removeWorktree(worktreePath: string): Promise<void> {
