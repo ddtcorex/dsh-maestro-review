@@ -692,6 +692,31 @@ export function govardWorktreeOverride(projectId: number, mrIid: number, keySuff
   return `project_name: ${name}\ndomain: ${name}.test\n`
 }
 
+/**
+ * Fetch the MR's diff base SHA for govard diff-scope runs. Best-effort:
+ * returns undefined (the lint tool then fail-fasts with guidance) rather
+ * than failing the review when GitLab is unreachable.
+ */
+export async function fetchMrBaseSha(
+  baseUrl: string,
+  token: string,
+  projectId: number,
+  mrIid: number,
+  fetcher: typeof fetch = fetch,
+): Promise<string | undefined> {
+  try {
+    const response = await fetcher(
+      `${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mrIid}`,
+      { headers: { 'PRIVATE-TOKEN': token } },
+    )
+    if (!response.ok) return undefined
+    const mr = await response.json() as { diff_refs?: { base_sha?: string } }
+    return mr.diff_refs?.base_sha
+  } catch {
+    return undefined
+  }
+}
+
 export async function ensureWorktree(localRepoPath: string, sourceBranch: string, projectId: number, mrIid: number, keySuffix?: string): Promise<string> {
   assertSafeBranchName(sourceBranch)
   const worktreePath = join('/tmp', `maestro-mr-${projectId}-${mrIid}${keySuffix === undefined ? '' : `-${keySuffix}`}`)
@@ -782,6 +807,9 @@ export function apply(ctx: Context, config: Config): void {
   // effect without a plugin restart.
   let effectiveAgentTimeoutMs = config.agentTimeoutMs
   async function runReviewer(worktreePath: string | undefined, payload: ReviewRequest, effective: { gitlabBaseUrl: string; gitlabToken: string; botUsername: string }, reviewProfile?: ReviewSkillProfile, modelSelection?: ModelSelection, incrementalBlock?: string): Promise<ReviewOutcome> {
+    // MR base SHA feeds govard diff-scope runs; undefined degrades to the
+    // tool's fail-fast guidance instead of a wasted govard invocation.
+    const lintDefaultBase = await fetchMrBaseSha(effective.gitlabBaseUrl, effective.gitlabToken, payload.projectId, payload.mrIid)
     const primaryOptions = agentOptionsForModel(modelSelection ?? ctx.agentDefaultModel.currentSelection())
     const fallbackOptions: ModelSelection = { provider: primaryOptions.provider, model: primaryOptions.model }
     let lastHandle: AgentHandle | undefined
@@ -816,7 +844,7 @@ export function apply(ctx: Context, config: Config): void {
               await agentCtx.plugin(ModuleCheckTool, { rootPath: worktreePath })
               await agentCtx.plugin(PhtmlEscapeScanTool, { rootPath: worktreePath })
               await agentCtx.plugin(ScopeSplitTool, { rootPath: worktreePath })
-              await agentCtx.plugin(GovardAuditLintTool, { rootPath: worktreePath })
+              await agentCtx.plugin(GovardAuditLintTool, { rootPath: worktreePath, defaultBase: lintDefaultBase })
               await agentCtx.plugin(PerfLogStatsTool, { rootPath: worktreePath })
             }
           },
