@@ -40,6 +40,39 @@ async function isInsideRoot(r:string,t:string):Promise<boolean>{
 export function cleanJson(raw:string):string{
   return raw.replace(/\n\s*ERROR audit run.*$/s, '').replace(/\s{2,}ERROR audit run.*$/s, '').trimEnd()
 }
+
+interface LintViolationLike { path?: string; line?: number; rule?: string; message?: string }
+
+interface LintResultLike {
+  ok: boolean
+  exitCode?: number
+  lint?: {
+    phpcs?: { violations?: LintViolationLike[] }
+    phpstan?: { errors?: LintViolationLike[] }
+    pubMediaGuard?: { violations?: LintViolationLike[] }
+  }
+  summary?: { findingCount?: number }
+  diagnostics?: string
+}
+
+/**
+ * One-line-plus render for the agent: a bare "audit lint failed" hides the
+ * violations the reviewer needs, so carry counts plus the top findings.
+ */
+export function lintResultText(v: LintResultLike): string {
+  if (v.ok) return 'audit lint passed'
+  const phpcs = v.lint?.phpcs?.violations ?? []
+  const phpstan = v.lint?.phpstan?.errors ?? []
+  const pubMedia = v.lint?.pubMediaGuard?.violations ?? []
+  const total = v.summary?.findingCount ?? phpcs.length + phpstan.length + pubMedia.length
+  const bits: string[] = [`audit lint failed — ${total} finding(s) (phpcs ${phpcs.length}, phpstan ${phpstan.length}, pubMedia ${pubMedia.length})`]
+  const top = [...phpcs.map(x => ({ ...x, tool: 'phpcs' })), ...phpstan.map(x => ({ ...x, tool: 'phpstan' })), ...pubMedia.map(x => ({ ...x, tool: 'pubMedia' }))].slice(0, 5)
+  for (const f of top) bits.push(`- [${f.tool}] ${f.path ?? '?'}:${f.line ?? '?'}${f.rule !== undefined ? ` ${f.rule}` : ''}`)
+  if (v.exitCode !== undefined) bits.push(`exit ${v.exitCode}`)
+  const diag = (v.diagnostics ?? '').split('\n')[0]?.trim()
+  if (total === 0 && diag !== '' && diag !== undefined) bits.push(diag.slice(0, 200))
+  return bits.join('\n')
+}
 // Govard 1.67 auto timeout: 90s-30m framework-aware (15m floor for wordpress/magento2 → 22.5m auto)
 // Keep kill timeout above the largest auto value so the outer watchdog doesn't cancel a valid auto run.
 const DEFAULT_TIMEOUT=900_000
@@ -93,7 +126,7 @@ export function apply(ctx:Context, config:{rootPath?:string, timeoutMs?:number}=
           runId:{type:'string'},
         }
       },
-      render:(_a,v:{ok:boolean})=>[{type:'text', text: v.ok? 'audit lint passed':'audit lint failed'}],
+      render:(_a,v:LintResultLike)=>[{type:'text', text: lintResultText(v)}],
     },
     async execute(args, exec){
       const rawPath=(args as {worktreePath?:string}).worktreePath
