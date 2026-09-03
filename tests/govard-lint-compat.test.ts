@@ -1,11 +1,20 @@
 import { describe, it, expect } from 'vitest'
-import { collectLintFindings, lintResultText } from '../src/host/govard-audit-lint-tool.js'
+import { collectLintFindings, lintResultText, cleanJson } from '../src/host/govard-audit-lint-tool.js'
+
+describe('cleanJson', () => {
+  it('strips the pterm multi-space ERROR trailer so stdout parses', () => {
+    const raw = '{"status":"failed"}\n  ERROR   audit run 20260903T165720Z-f2782c96/run-0001 reported failed checks\n'
+    expect(cleanJson(raw)).toBe('{"status":"failed"}')
+    expect(() => JSON.parse(cleanJson(raw))).not.toThrow()
+  })
+})
 
 const compatFinding = { tool: 'M2-LINT-COMPAT', message: 'Internal error: Class "Zend_Db_Select" not found while analysing file /source/app/code/BeBe9/X.php' }
 const phpcsFinding = { tool: 'phpcs', path: 'a.php', line: 10, rule: 'Magento2.Security.Xss', message: 'x' }
 
 function envelope(findings: unknown[]): unknown {
-  return { results: [{ evidence: { php_results: [{ php_version: '8.2', findings }] } }] }
+  // Live shape (govard audit run): jobs[].evidence.php_results[].findings
+  return { jobs: [{ evidence: { php_results: [{ php_version: '8.2', findings }] } }] }
 }
 
 describe('collectLintFindings', () => {

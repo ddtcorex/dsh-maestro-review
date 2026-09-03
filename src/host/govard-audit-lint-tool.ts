@@ -70,7 +70,8 @@ async function isInsideRoot(r:string,t:string):Promise<boolean>{
   }
 }
 export function cleanJson(raw:string):string{
-  return raw.replace(/\n\s*ERROR audit run.*$/s, '').replace(/\s{2,}ERROR audit run.*$/s, '').trimEnd()
+  // pterm pads the level name: "  ERROR   audit run ..." (multi-space).
+  return raw.replace(/\n\s*ERROR\s+audit run.*$/s, '').replace(/\s{2,}ERROR\s+audit run.*$/s, '').trimEnd()
 }
 
 interface LintViolationLike { path?: string; line?: number; rule?: string; message?: string }
@@ -113,8 +114,11 @@ export function collectLintFindings(parsed: unknown): CollectedLintFindings {
   const ev = p.evidence as Record<string, any> | undefined
   if (Array.isArray(ev?.php_results)) lists.push(...ev.php_results.map((r: any) => r?.findings).filter(Array.isArray))
   if (Array.isArray(p.php_results)) lists.push(...p.php_results.map((r: any) => r?.findings).filter(Array.isArray))
-  if (Array.isArray(p.results)) {
-    for (const r of p.results as Array<Record<string, any>>) {
+  // Live shape (govard audit run): jobs[].evidence.php_results[].findings.
+  // Older shapes (results[], bare evidence) kept for backward compatibility.
+  for (const key of ['jobs', 'results'] as const) {
+    if (!Array.isArray(p[key])) continue
+    for (const r of p[key] as Array<Record<string, any>>) {
       const e = r?.evidence as Record<string, any> | undefined
       const pr = e?.php_results ?? r?.php_results
       if (Array.isArray(pr)) lists.push(...pr.map((x: any) => x?.findings).filter(Array.isArray))
