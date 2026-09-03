@@ -12,7 +12,7 @@ export const inject = ['connection', 'maestroTunnel']
 /** Keys the Settings card may persist; anything else is a rejected save. */
 const SAVABLE_KEYS = new Set<keyof MaestroUserConfig>([
   'gitlabBaseUrl', 'gitlabToken', 'botUsername', 'webhookSecret', 'webhookPort',
-  'projectMappings', 'reviewModel', 'supervisorModel', 'autoRereviewOnPush', 'agentTimeoutMs', 'reviewSessionRetentionDays',
+  'projectMappings', 'reviewModel', 'autoRereviewOnPush', 'agentTimeoutMs', 'reviewSessionRetentionDays',
   'tunnelMode', 'quickTarget', 'tunnelId', 'tunnelCredentialsFile', 'tunnelHostname',
   'proxyPort', 'proxyHost', 'lanPinEnabled', 'telegramBotToken', 'telegramChatId',
   'telegramReviewNotifications',
@@ -85,14 +85,6 @@ function validateSavePayload(payload: unknown): { ok: true; patch: Partial<Maest
       }
       const err = validateReviewModel(value)
       if (err !== null) return { ok: false, message: err }
-    }
-    if (key === 'supervisorModel') {
-      if (value === null) {
-        patch[key as keyof MaestroUserConfig] = undefined as never
-        continue
-      }
-      const err = validateReviewModel(value)
-      if (err !== null) return { ok: false, message: err.replace('reviewModel', 'supervisorModel') }
     }
     if (key === 'webhookPort' && value !== undefined && (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 65535)) {
       return { ok: false, message: 'webhookPort must be an integer between 1 and 65535.' }

@@ -23,8 +23,6 @@ export interface MaestroUserConfig {
   projectMappings?: Array<{ projectPath: string; localRepoPath: string; reviewProfile?: ReviewSkillProfile; reviewModel?: ReviewModelSelection }>
   /** Override the DSH default model for automated reviews. When absent the global DSH default is used. */
   reviewModel?: ReviewModelSelection
-  /** Override the DSH default model for the supervisor debug-agent. When absent the review model (or DSH default) is used. */
-  supervisorModel?: ReviewModelSelection
   /** Re-run a quick review whenever new commits land on a previously reviewed MR. */
   autoRereviewOnPush?: boolean
   /** Bound one automated review agent's turn. */
