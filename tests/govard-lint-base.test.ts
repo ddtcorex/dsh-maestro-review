@@ -15,6 +15,11 @@ describe('resolveLintBase', () => {
 })
 
 describe('buildAuditCliArgs', () => {
+  it('passes --allow-xdebug only when configured (review envs disable xdebug via worktree override)', () => {
+    expect(buildAuditCliArgs({ allowXdebug: true })).toContain('--allow-xdebug')
+    expect(buildAuditCliArgs({})).not.toContain('--allow-xdebug')
+    expect(buildAuditCliArgs({ allowXdebug: false })).not.toContain('--allow-xdebug')
+  })
   it('includes --scope diff --base when diffing', () => {
     const args = buildAuditCliArgs({ checks: ['lint'], mode: 'auto', timeout: 'auto', lintProvider: 'govard', scope: 'diff', base: 'abc123' })
     expect(args).toContain('--scope')

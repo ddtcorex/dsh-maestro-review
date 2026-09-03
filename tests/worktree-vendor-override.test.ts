@@ -8,10 +8,13 @@ describe('buildVendorOverrideYaml', () => {
   it('keeps the project mount first, then the read-only vendor bind (govard MergeMap replaces lists)', () => {
     const yaml = buildVendorOverrideYaml('/home/kai/Work/htdocs/bebe9/vendor')
     expect(yaml).toContain('php:')
-    expect(yaml).toContain('php-debug:')
     expect(yaml).toContain('.:/var/www/html')
     expect(yaml).toContain('/home/kai/Work/htdocs/bebe9/vendor:/var/www/html/vendor:ro')
     expect(yaml.indexOf('.:/var/www/html')).toBeLessThan(yaml.indexOf('/home/kai/Work/htdocs/bebe9/vendor'))
+  })
+  it('targets only the php service (php-debug vanishes from base when xdebug is off)', () => {
+    const yaml = buildVendorOverrideYaml('/home/kai/Work/htdocs/bebe9/vendor')
+    expect(yaml).not.toContain('php-debug')
   })
   it('honors a custom container workdir', () => {
     const yaml = buildVendorOverrideYaml('/v/vendor', undefined, '/app')

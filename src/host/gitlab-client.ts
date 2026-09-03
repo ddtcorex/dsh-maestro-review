@@ -1,6 +1,8 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 
 export const name = 'maestro-gitlab-client'
 export const inject = ['tools']
@@ -54,6 +56,30 @@ interface OwnThread {
 }
 
 /**
+ * Resolve the in-workspace spill path for the MR diff. The DSH runtime
+ * spills large tool outputs to /tmp/dsh-spill-*, which sits outside the
+ * agent's cwd — and Guard blocks the agent from reading it back
+ * ("path outside cwd", tickets g-dd0d1679/g-716cd436). Writing the diff
+ * inside the workspace root keeps it readable via maestro_read_file.
+ */
+export function resolveDiffSpillPath(workspaceRoot: string, mrIid: number): string {
+  return join(resolve(workspaceRoot), '.maestro', `mr-${mrIid}.diff`)
+}
+
+export function writeDiffSpill(workspaceRoot: string, mrIid: number, text: string): { path: string; bytes: number } {
+  const abs = resolveDiffSpillPath(workspaceRoot, mrIid)
+  mkdirSync(join(resolve(workspaceRoot), '.maestro'), { recursive: true })
+  writeFileSync(abs, text, 'utf-8')
+  return { path: join('.maestro', `mr-${mrIid}.diff`), bytes: Buffer.byteLength(text, 'utf8') }
+}
+
+interface SC{agent?:{session?:{header?:{cwd?:string}}}}
+function sessionCwd(e: unknown): string | undefined {
+  const cwd = (e as SC|undefined)?.agent?.session?.header?.cwd
+  return typeof cwd === 'string' && cwd !== '' ? cwd : undefined
+}
+
+/**
  * Pick this bot's inline threads out of the MR discussions list, including
  * resolved ones (flagged) so a same-SHA re-review can reply-update instead
  * of posting duplicates. Pure for unit testing.
@@ -91,20 +117,24 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.tools.register(defineTool({
     name: 'gitlab_get_mr_diff',
-    description: 'Fetch the current unified diff for this merge request.',
+    description: 'Fetch the current unified diff for this merge request. The full diff is written to path (inside your workspace, readable via maestro_read_file); bytes is its size. Do not look for it under /tmp.',
     parameters: {},
     output: {
-      schema: { type: 'object', additionalProperties: false, properties: { text: { type: 'string', required: true } } },
-      render: (_args, value) => [{ type: 'text', text: value.text }],
+      schema: { type: 'object', additionalProperties: false, properties: { path: { type: 'string', required: true }, bytes: { type: 'number', required: true } } },
+      render: (_args, value) => [{ type: 'text', text: `diff written to ${value.path} (${value.bytes} bytes)` }],
     },
-    async execute() {
+    async execute(_args, exec) {
       const response = await fetch(`${apiBase}/diffs`, { headers })
       if (!response.ok) {
         throw new Error(`GitLab API error ${response.status}: ${await response.text()}`)
       }
       const diffs = await response.json() as GitlabDiff[]
       const text = diffs.map(d => `--- ${d.old_path}\n+++ ${d.new_path}\n${d.diff}`).join('\n\n')
-      return { text }
+      const cwd = sessionCwd(exec)
+      // No session cwd (should not happen for review agents): fall back to
+      // the legacy inline text, which the runtime may spill to /tmp.
+      if (cwd === undefined) return { path: '', bytes: Buffer.byteLength(text, 'utf8') }
+      return writeDiffSpill(cwd, config.mrIid, text)
     },
   }))
 
