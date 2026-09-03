@@ -27,8 +27,14 @@ review:
       - review-report.md
   # Secrets — Protected + Masked, only available on the reviewer project's protected branches
   # MAESTRO_GITLAB_TOKEN (Project Access Token, api)
-  # DEEPSEEK_API_KEY
+  # DEEPSEEK_API_KEY (default review model key)
+  # OPENCODE_GO_API_KEY (only when REVIEW_MODEL_PROVIDER=opencode-go below)
   # TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID (optional)
+  # Model pin (optional, as a pair — unset both for the host default):
+  # REVIEW_MODEL_PROVIDER: "opencode-go"             # dsh provider route (must exist in the image)
+  # REVIEW_MODEL: "muse-spark-1.3-contributor"       # model id on that route
+  #   ID without provider fails boot fast (provider is required); provider
+  #   without ID is ignored. The provider's key (*_API_KEY above) must be set.
 
 # Build the image inside the same reviewer project (optional):
 #

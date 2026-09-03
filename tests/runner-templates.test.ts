@@ -8,6 +8,8 @@ describe('templates', () => {
     expect(yml).toMatch(/review-report\.json/)
     expect(yml).toMatch(/GIT_STRATEGY: none/)
     expect(yml).toMatch(/script:\s*\n\s*- \/entrypoint\.sh\s*$/m)
+    expect(yml).toMatch(/REVIEW_MODEL_PROVIDER/)
+    expect(yml).toMatch(/REVIEW_MODEL:/)
   })
 
   it('source template uses trigger: project and no secrets', () => {

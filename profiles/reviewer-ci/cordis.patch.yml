@@ -41,6 +41,10 @@
     botUsername: maestro-bot
     projectMappings: []
     agentTimeoutMs: 1200000
+    # Pinned review model (no Settings UI in CI). Optional as a pair: both unset
+    # → host default; ID without provider → boot fails fast on the zod schema
+    # (provider required) instead of silently calling the wrong model.
+    reviewModel: !!js "process.env.REVIEW_MODEL ? { provider: process.env.REVIEW_MODEL_PROVIDER, model: process.env.REVIEW_MODEL } : undefined"
 
 # New rows this profile needs that dsh-base/dsh-maestro-review don't already provide.
 - insert:

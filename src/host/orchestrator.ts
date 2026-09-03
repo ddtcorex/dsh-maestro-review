@@ -230,14 +230,17 @@ export function getTurnErrorMessage(handle: unknown): string | undefined {
 
 /**
  * Resolve the model to use for an automated review. Priority: per-project
- * override > global reviewModel > DSH default (`fallback`).
+ * override > global reviewModel (Maestro Settings) > row-config reviewModel
+ * (lets a headless profile such as reviewer-ci pin a model from env vars,
+ * where there is no Settings UI) > DSH default (`fallback`).
  */
 export function resolveReviewModel(
   userConfig: MaestroUserConfig,
   mapping: { reviewModel?: ReviewModelSelection | null; projectPath?: string } | undefined,
   fallback: ModelSelection,
+  rowSelection?: ReviewModelSelection | null,
 ): ModelSelection {
-  const raw = (mapping?.reviewModel as ReviewModelSelection | null | undefined) ?? userConfig.reviewModel
+  const raw = (mapping?.reviewModel as ReviewModelSelection | null | undefined) ?? userConfig.reviewModel ?? rowSelection
   if (raw === undefined || raw === null) return fallback
   return {
     provider: raw.provider,
@@ -277,6 +280,12 @@ export interface Config {
   botUsername: string
   /** Hard ceiling on one automated agent's turn. */
   agentTimeoutMs: number
+  /**
+   * Deployment-level model pin, below Maestro Settings in precedence. Lets a
+   * headless profile (reviewer-ci) select the review model from env vars —
+   * e.g. REVIEW_MODEL_PROVIDER/REVIEW_MODEL — where no Settings UI exists.
+   */
+  reviewModel?: ReviewModelSelection | null
 }
 
 export const DEFAULT_AGENT_TIMEOUT_MS = 20 * 60_000
@@ -291,6 +300,11 @@ export const Config: z<Config> = z.object({
   gitlabToken: z.string().role('secret'),
   botUsername: z.string().required(),
   agentTimeoutMs: z.number().min(1000).default(DEFAULT_AGENT_TIMEOUT_MS),
+  reviewModel: z.object({
+    provider: z.string().required(),
+    model: z.string().required(),
+    reasoningEffort: z.string(),
+  }),
 })
 
 export interface ReviewOutcome {
@@ -1161,7 +1175,7 @@ export function apply(ctx: Context, config: Config): void {
       const fallbackSelection: ModelSelection = (ctx.get?.('agentDefaultModel') as { currentSelection(): ModelSelection } | undefined)?.currentSelection()
         ?? (ctx as unknown as { agentDefaultModel?: { currentSelection(): ModelSelection } }).agentDefaultModel?.currentSelection()
         ?? { provider: 'fallback', model: 'fallback' }
-      const reviewModelSelection = resolveReviewModel(userConfig, mapping, fallbackSelection)
+      const reviewModelSelection = resolveReviewModel(userConfig, mapping, fallbackSelection, config.reviewModel)
       // Opt-in Telegram digest; a delivery failure is logged and dropped.
       const reviewStartMsOuter = Date.now()
       const notifyTelegram = (

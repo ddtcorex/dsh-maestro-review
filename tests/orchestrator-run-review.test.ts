@@ -53,3 +53,36 @@ describe('orchestrator.apply — reviewRunner wiring', () => {
     expect(result.failures[0]).toMatch(/no GitLab token/)
   })
 })
+
+describe('resolveReviewModel — row-config reviewModel', () => {
+  it('uses the row selection when mapping and user config are absent (CI profile case)', async () => {
+    const { resolveReviewModel } = await import('../src/host/orchestrator.js')
+    expect(resolveReviewModel({}, undefined,
+      { provider: 'fallback', model: 'fallback' },
+      { provider: 'opencode-go', model: 'muse-spark-1.3-contributor' }),
+    ).toEqual({ provider: 'opencode-go', model: 'muse-spark-1.3-contributor' })
+  })
+
+  it('prefers user config over the row selection', async () => {
+    const { resolveReviewModel } = await import('../src/host/orchestrator.js')
+    expect(resolveReviewModel({ reviewModel: { provider: 'u', model: 'um' } }, undefined,
+      { provider: 'fallback', model: 'fallback' },
+      { provider: 'row', model: 'rowm' }),
+    ).toEqual({ provider: 'u', model: 'um' })
+  })
+
+  it('prefers mapping override over the row selection', async () => {
+    const { resolveReviewModel } = await import('../src/host/orchestrator.js')
+    expect(resolveReviewModel({}, { reviewModel: { provider: 'm', model: 'mm' } },
+      { provider: 'fallback', model: 'fallback' },
+      { provider: 'row', model: 'rowm' }),
+    ).toEqual({ provider: 'm', model: 'mm' })
+  })
+
+  it('falls back to the host default when all three are absent', async () => {
+    const { resolveReviewModel } = await import('../src/host/orchestrator.js')
+    expect(resolveReviewModel({}, undefined,
+      { provider: 'fallback', model: 'fallback' }, undefined),
+    ).toEqual({ provider: 'fallback', model: 'fallback' })
+  })
+})
