@@ -31,11 +31,16 @@ describe('docker', () => {
     expect(sh).toMatch(/REVIEW_REPORT_DIR/)
   })
 
-  it('ci-settings.yaml activates opencode-go with no embedded secrets', () => {
+  it('ci-settings.yaml mirrors the host LLM config with no embedded secrets', () => {
     const yml = readFileSync('docker/ci-settings.yaml', 'utf-8')
+    // all three provider surfaces the host uses
+    expect(yml).toMatch(/omni-route/)
     expect(yml).toMatch(/opencode-go/)
+    expect(yml).toMatch(/llm-deepseek:/)
+    expect(yml).toMatch(/^agent-default-model:/m)
     expect(yml).toMatch(/apiKeyEnv:\s*OPENCODE_GO_API_KEY/)
-    expect(yml).not.toMatch(/^agent-default-model:/m)
+    expect(yml).toMatch(/apiKeyEnv:\s*OMNI_ROUTE_API_KEY/)
+    // keys resolve from env at call time — never baked in
     expect(yml).not.toMatch(/sk-[A-Za-z0-9]{8,}/)
     expect(yml).not.toMatch(/glpat-[A-Za-z0-9_.-]{8,}/)
   })

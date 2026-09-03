@@ -1,17 +1,38 @@
 # docker/ci-settings.yaml — baked to /app/settings.yaml (DSH_HOME) in the reviewer image.
 #
-# Activates the `opencode-go` LLM provider route (OpenAI-compatible gateway) so
-# REVIEW_MODEL_PROVIDER=opencode-go works with only a key — no settings mount needed.
-# Contains NO secrets: the key resolves at call time from the env var named in
-# apiKeyEnv (pass OPENCODE_GO_API_KEY with --env-file / CI secret). A reviewer
-# job that mounts its own /app/settings.yaml overrides this file entirely.
+# Full mirror of THIS host's LLM configuration (~/.dsh/settings.yaml, llm + default
+# sections only) — the reviewer container serves models exactly the way DSH does:
+# adapters register from these settings, keys resolve at call time from the env
+# var named in each apiKeyEnv (pass them with --env-file / CI secrets).
 #
-# Deliberately does NOT set agent-default-model: the default review model stays
-# the host default (unchanged behavior); the pin applies only when the
-# REVIEW_MODEL_PROVIDER/REVIEW_MODEL pair from templates/reviewer-project.gitlab-ci.yml
-# selects this route via the orchestrator's row-config reviewModel.
+# Contains NO secrets — only route definitions, model catalogs, and env var NAMES.
+# A reviewer job that mounts its own /app/settings.yaml overrides this file entirely.
+#
+# NOTE (public image): this file ships in the public image, so the private gateway
+# hostname under omni-route travels with it (reachability still needs OMNI_ROUTE_API_KEY,
+# which is NOT here). Redact that route if the hostname must stay private.
+#
+# Sections intentionally NOT mirrored: permission/sidebar/presets/onboarding are
+# interactive-host concerns; a headless CI run must not inherit danger-full-access
+# or UI state. Only the model-serving surface is mirrored.
 llm-pi-ai:
   providers:
+    omni-route:
+      displayName: OmniRoute
+      apiKeyEnv: OMNI_ROUTE_API_KEY
+      api: openai-completions
+      baseURL: https://omniroute.ddtcorex.com/v1
+      models:
+        - id: coding-budget
+          name: Coding Budget
+        - id: coding-premium
+          name: Coding Premium
+        - id: oc/laguna-s-2.1-free
+          name: Laguna S2.1
+        - id: opencode-zen/ling-3.0-flash-fin-free
+          name: Ling 3.0 Flash
+        - id: kra/hy3
+          name: Hy3
     opencode-go:
       displayName: OpenCode Go
       apiKeyEnv: OPENCODE_GO_API_KEY
@@ -20,3 +41,19 @@ llm-pi-ai:
       models:
         - id: muse-spark-1.3-contributor
           name: Muse Spark 1.3 Contributor
+llm-deepseek:
+  apiKeyEnv: OPENCODE_GO_API_KEY
+  baseURL: https://opencode.ai/zen/go/v1
+  models:
+    - id: deepseek-v4-pro
+      name: DeepSeek V4 Pro
+    - id: deepseek-v4-flash
+      name: DeepSeek V4 Flash
+    - id: deepseek-v4-flash-vision-exp
+      name: DeepSeek V4 Flash Vision Exp
+      inputModalities:
+        - text
+        - image
+agent-default-model:
+  provider: opencode-go
+  model: muse-spark-1.3-contributor
