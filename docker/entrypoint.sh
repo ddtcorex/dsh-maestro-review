@@ -5,6 +5,15 @@ if [ -z "${MAESTRO_GITLAB_TOKEN:-}" ] || [ -z "${SOURCE_PROJECT_ID:-}" ] || [ -z
   exit 1
 fi
 export REVIEW_REPORT_DIR="$PWD"
+# Key-based route selection (only for our baked template — the __CI_MANAGED__
+# marker; a job-mounted settings.yaml passes through untouched): opencode is the
+# default (host mirror) unless only a deepseek key is present. An explicit
+# REVIEW_MODEL_PROVIDER pin wins over this default elsewhere (row-config).
+if grep -q __CI_MANAGED__ /app/settings.yaml 2>/dev/null; then
+  if [ -z "${OPENCODE_GO_API_KEY:-}" ] && [ -n "${DEEPSEEK_API_KEY:-}" ]; then
+    cp /app/settings.deepseek.yaml /app/settings.yaml
+  fi
+fi
 # Review history must survive across jobs (fresh container each run) or the
 # push-gate and incremental context go blind. The reviewer job caches
 # $REVIEW_REPORT_DIR/.maestro-history (see templates/reviewer-project.gitlab-ci.yml);

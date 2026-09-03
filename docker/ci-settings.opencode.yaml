@@ -1,8 +1,9 @@
-# docker/ci-settings.yaml — template baked to /app/settings.yaml (DSH_HOME).
-# entrypoint.sh substitutes __OPENCODE_MODEL__ (from $OPENCODE_MODEL, default
-# muse-spark-1.3-contributor) before dsh boots, so the opencode model is one env
-# variable. A job-mounted /app/settings.yaml contains no placeholder and passes
-# through untouched.
+# docker/ci-settings.opencode.yaml — template baked to /app/settings.yaml (DSH_HOME).
+# __CI_MANAGED__ marks this file as ours: entrypoint.sh only swaps/substitutes
+# when the marker is present, so a job-mounted /app/settings.yaml passes through
+# untouched. entrypoint.sh substitutes __OPENCODE_MODEL__ (from $OPENCODE_MODEL,
+# default muse-spark-1.3-contributor) before dsh boots, so the opencode model is
+# one env variable.
 #
 # Mirrors this host's llm-pi-ai (opencode-go), llm-deepseek, and agent-default-model
 # sections — the reviewer container serves models the way DSH does. Keys resolve

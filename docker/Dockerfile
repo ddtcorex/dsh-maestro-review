@@ -86,13 +86,15 @@ COPY --from=builder /build/packages/dsh-maestro-review/presets/maestro-auditor .
 # Host LLM-config mirror for model serving — dsh registers LLM adapters from
 # DSH_HOME settings, which is empty in a fresh container (verified 2026-09-04:
 # pinning opencode-go without this fails with 'no adapter registered for
-# provider "opencode-go"'). Mirrors the host's opencode-go, llm-deepseek, and
-# agent-default-model sections; the opencode model id itself is one env variable
-# (OPENCODE_MODEL, substituted by entrypoint.sh into the __OPENCODE_MODEL__
-# placeholders). Holds no secrets (each key resolves from its apiKeyEnv var at
-# call time). A job-mounted /app/settings.yaml overrides it.
+# provider "opencode-go"'). Two variants (key-based selection in entrypoint.sh):
+# ci-settings.opencode.yaml (default, host mirror) and ci-settings.deepseek.yaml
+# (deepseek-official straight from api.deepseek.com). The opencode model id itself
+# is one env variable (OPENCODE_MODEL, substituted into __OPENCODE_MODEL__).
+# Holds no secrets (each key resolves from its apiKeyEnv var at call time).
+# A job-mounted /app/settings.yaml overrides both.
 # Interactive-host sections (permission/sidebar/presets) are deliberately excluded.
-COPY packages/dsh-maestro-review/docker/ci-settings.yaml /app/settings.yaml
+COPY packages/dsh-maestro-review/docker/ci-settings.opencode.yaml /app/settings.yaml
+COPY packages/dsh-maestro-review/docker/ci-settings.deepseek.yaml /app/settings.deepseek.yaml
 COPY packages/dsh-maestro-review/docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

@@ -16,7 +16,8 @@ describe('docker', () => {
     expect(df).toMatch(/ENV DSH_HOME=\/app\s*$/m)
     expect(df).toMatch(/\.agent-presets\/dsh-maestro-reviewer/)
     expect(df).toMatch(/\.agent-presets\/dsh-maestro-auditor/)
-    expect(df).toMatch(/ci-settings\.yaml \/app\/settings\.yaml/)
+    expect(df).toMatch(/ci-settings\.opencode\.yaml \/app\/settings\.yaml/)
+    expect(df).toMatch(/ci-settings\.deepseek\.yaml \/app\/settings\.deepseek\.yaml/)
     expect(df).toMatch(/tini/)
     expect(df).toMatch(/ENTRYPOINT.*entrypoint\.sh/)
   })
@@ -31,12 +32,16 @@ describe('docker', () => {
     expect(sh).toMatch(/REVIEW_REPORT_DIR/)
     expect(sh).toMatch(/OPENCODE_MODEL/)
     expect(sh).toMatch(/__OPENCODE_MODEL__/)
+    expect(sh).toMatch(/__CI_MANAGED__/)
+    expect(sh).toMatch(/settings\.deepseek\.yaml/)
+    expect(sh).toMatch(/DEEPSEEK_API_KEY/)
     expect(sh).toMatch(/\.maestro-history/)
     expect(sh).toMatch(/dsh-maestro-review/)
   })
 
-  it('ci-settings.yaml mirrors the host LLM config with no embedded secrets', () => {
-    const yml = readFileSync('docker/ci-settings.yaml', 'utf-8')
+  it('ci-settings.opencode.yaml mirrors the host LLM config with no embedded secrets', () => {
+    const yml = readFileSync('docker/ci-settings.opencode.yaml', 'utf-8')
+    expect(yml).toMatch(/__CI_MANAGED__/)
     expect(yml).toMatch(/opencode-go/)
     expect(yml).toMatch(/llm-deepseek:/)
     // the opencode model is one env variable, substituted by entrypoint.sh
@@ -47,5 +52,16 @@ describe('docker', () => {
     // keys resolve from env at call time — never baked in
     expect(yml).not.toMatch(/sk-[A-Za-z0-9]{8,}/)
     expect(yml).not.toMatch(/glpat-[A-Za-z0-9_.-]{8,}/)
+  })
+
+  it('ci-settings.deepseek.yaml serves deepseek-official from api.deepseek.com', () => {
+    const yml = readFileSync('docker/ci-settings.deepseek.yaml', 'utf-8')
+    expect(yml).toMatch(/llm-deepseek:/)
+    expect(yml).toMatch(/apiKeyEnv:\s*DEEPSEEK_API_KEY/)
+    expect(yml).toMatch(/baseURL:\s*https:\/\/api\.deepseek\.com/)
+    expect(yml).toMatch(/provider:\s*deepseek-official/)
+    expect(yml).not.toMatch(/__OPENCODE_MODEL__/)
+    expect(yml).not.toMatch(/__CI_MANAGED__/)
+    expect(yml).not.toMatch(/sk-[A-Za-z0-9]{8,}/)
   })
 })
