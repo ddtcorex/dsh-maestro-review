@@ -14,9 +14,17 @@ describe('buildVendorOverrideYaml', () => {
     expect(yaml.indexOf('.:/var/www/html')).toBeLessThan(yaml.indexOf('/home/kai/Work/htdocs/bebe9/vendor'))
   })
   it('honors a custom container workdir', () => {
-    const yaml = buildVendorOverrideYaml('/v/vendor', '/app')
+    const yaml = buildVendorOverrideYaml('/v/vendor', undefined, '/app')
     expect(yaml).toContain('.:/app')
     expect(yaml).toContain('/v/vendor:/app/vendor:ro')
+  })
+  it('binds a linked env.php file when given (host symlinks dangle in-container)', () => {
+    const yaml = buildVendorOverrideYaml('/v/vendor', '/c/app/etc/env.php')
+    expect(yaml).toContain('/c/app/etc/env.php:/var/www/html/app/etc/env.php:ro')
+  })
+  it('omits the env bind when no env file is linked', () => {
+    const yaml = buildVendorOverrideYaml('/v/vendor')
+    expect(yaml).not.toContain('env.php')
   })
 })
 
