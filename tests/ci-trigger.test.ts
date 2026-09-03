@@ -60,4 +60,19 @@ describe('runCiTrigger', () => {
     expect(writes.map(w => w[0])).toEqual(['review-report.json', 'review-report.md'])
     expect(writes[0][1]).toContain('"summary": "done"')
   })
+
+  it('prefixes report paths with REVIEW_REPORT_DIR when set (entrypoint cds away)', async () => {
+    const cfg = parseCiEnvConfig({ GITLAB_HOST: 'h', MAESTRO_GITLAB_TOKEN: 'tok', SOURCE_PROJECT_ID: '1', MR_IID: '2' })
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ source_branch: 'feat/x' }), { status: 200 }))
+    const fakeCtx = { reviewRunner: vi.fn(async () => ({ ok: true, summary: 'done', failures: [], durationMs: 5 })) }
+    const writes: Array<[string, string]> = []
+    const fakeWriteFile = (async (path: string, data: string) => { writes.push([path, data]) }) as unknown as typeof import('node:fs/promises').writeFile
+    process.env.REVIEW_REPORT_DIR = '/out'
+    try {
+      await runCiTrigger(fakeCtx as any, cfg, { fetcher: fetcher as unknown as typeof fetch, writeFile: fakeWriteFile })
+    } finally {
+      delete process.env.REVIEW_REPORT_DIR
+    }
+    expect(writes.map(w => w[0])).toEqual(['/out/review-report.json', '/out/review-report.md'])
+  })
 })

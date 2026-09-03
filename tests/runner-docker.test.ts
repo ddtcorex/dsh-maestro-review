@@ -25,5 +25,6 @@ describe('docker', () => {
     expect(sh).toMatch(/MR_IID/)
     expect(sh).toMatch(/--profile reviewer-ci"?\s*$/m)
     expect(sh).not.toMatch(/cli\.js/)
+    expect(sh).toMatch(/REVIEW_REPORT_DIR/)
   })
 })

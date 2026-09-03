@@ -1,5 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import { join } from 'node:path'
 import type { ReviewRequest, ReviewResult } from '../events.js'
 
 export const name = 'maestro-review-ci-trigger'
@@ -73,10 +74,15 @@ export async function runCiTrigger(
   }
   const result = await ctx.reviewRunner(request)
   const { writeFile } = deps.writeFile !== undefined ? { writeFile: deps.writeFile } : await import('node:fs/promises')
+  // entrypoint.sh cds into deepseek-harness before execing dsh, so a bare relative
+  // path would land inside the harness checkout (lost with the container). The
+  // entrypoint exports REVIEW_REPORT_DIR=$PWD captured before the cd, so reports land
+  // in the CI job's working directory where `artifacts:` picks them up.
+  const reportDir = process.env.REVIEW_REPORT_DIR?.trim() || '.'
   const report = { ...result, projectId: config.sourceProjectId, mrIid: config.mrIid, mode: config.mode, generatedAt: new Date().toISOString() }
-  await writeFile('review-report.json', JSON.stringify(report, null, 2), 'utf-8')
+  await writeFile(join(reportDir, 'review-report.json'), JSON.stringify(report, null, 2), 'utf-8')
   const md = `# Review Report\n\n**Project:** ${config.sourceProjectId} !${config.mrIid}\n**Mode:** ${config.mode}\n**Duration:** ${result.durationMs}ms\n\n${result.summary ?? '(no summary)'}\n${result.failures.length > 0 ? `\nFailures:\n${result.failures.map(f => `- ${f}`).join('\n')}\n` : ''}`
-  await writeFile('review-report.md', md, 'utf-8')
+  await writeFile(join(reportDir, 'review-report.md'), md, 'utf-8')
   return result
 }
 
@@ -90,6 +96,7 @@ export function apply(ctx: Context): void {
           ? { ok: true, summary: '[dry-run] config valid, skipping review', failures: [], durationMs: 0 }
           : await runCiTrigger(ctx, config)
         console.log(`[review] ci-trigger finished: ok=${result.ok} summary=${JSON.stringify(result.summary)} failures=${result.failures.length}`)
+        for (const failure of result.failures) console.error(`[review] ci-trigger failure: ${failure}`)
         const exit = ctx.get('appExit')
         if (exit === undefined) {
           console.error('[review] ctx.get(\'appExit\') is undefined — the launcher did not provide it, process cannot signal its real exit code')
