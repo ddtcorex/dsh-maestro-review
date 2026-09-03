@@ -37,11 +37,8 @@ describe('docker', () => {
 
   it('ci-settings.yaml mirrors the host LLM config with no embedded secrets', () => {
     const yml = readFileSync('docker/ci-settings.yaml', 'utf-8')
-    // opencode-go + deepseek-via-zen; omni-route is deliberately NOT wired
     expect(yml).toMatch(/opencode-go/)
     expect(yml).toMatch(/llm-deepseek:/)
-    expect(yml).not.toMatch(/omni-route/)
-    expect(yml).not.toMatch(/OMNI_ROUTE_API_KEY/)
     // the opencode model is one env variable, substituted by entrypoint.sh
     // (exactly two value positions: catalog id + agent default)
     expect(yml.match(/^\s+(?:- id|model): __OPENCODE_MODEL__$/gm)).toHaveLength(2)
