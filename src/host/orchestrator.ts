@@ -1,4 +1,4 @@
-import { mkdir, writeFile, symlink, stat } from 'node:fs/promises'
+import { mkdir, writeFile, symlink, stat, lstat } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { promisify } from 'node:util'
@@ -692,6 +692,31 @@ export function govardWorktreeOverride(projectId: number, mrIid: number, keySuff
   return `project_name: ${name}\ndomain: ${name}.test\n`
 }
 
+/**
+ * Fetch the MR's diff base SHA for govard diff-scope runs. Best-effort:
+ * returns undefined (the lint tool then fail-fasts with guidance) rather
+ * than failing the review when GitLab is unreachable.
+ */
+export async function fetchMrBaseSha(
+  baseUrl: string,
+  token: string,
+  projectId: number,
+  mrIid: number,
+  fetcher: typeof fetch = fetch,
+): Promise<string | undefined> {
+  try {
+    const response = await fetcher(
+      `${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mrIid}`,
+      { headers: { 'PRIVATE-TOKEN': token } },
+    )
+    if (!response.ok) return undefined
+    const mr = await response.json() as { diff_refs?: { base_sha?: string } }
+    return mr.diff_refs?.base_sha
+  } catch {
+    return undefined
+  }
+}
+
 export async function ensureWorktree(localRepoPath: string, sourceBranch: string, projectId: number, mrIid: number, keySuffix?: string): Promise<string> {
   assertSafeBranchName(sourceBranch)
   const worktreePath = join('/tmp', `maestro-mr-${projectId}-${mrIid}${keySuffix === undefined ? '' : `-${keySuffix}`}`)
@@ -714,7 +739,22 @@ export async function ensureWorktree(localRepoPath: string, sourceBranch: string
   await execFileAsync('git', ['worktree', 'add', '--', worktreePath, `origin/${sourceBranch}`], { cwd: localRepoPath, timeout: GIT_TIMEOUT_MS })
   await writeFile(join(worktreePath, '.govard.local.yml'), govardWorktreeOverride(projectId, mrIid, keySuffix), 'utf-8')
   await linkVendorIntoWorktree(localRepoPath, worktreePath)
+  await writeContainerVendorOverride(localRepoPath, worktreePath)
   return worktreePath
+}
+
+/**
+ * A vendor dir only counts as installed dependencies when the composer
+ * autoloader is a real file. Magento tracks `vendor/.htaccess`, so every
+ * worktree has a vendor/ stub — that stub must not pass for real deps, and
+ * must not block the container bind that provides them.
+ */
+export async function vendorHasAutoload(dir: string): Promise<boolean> {
+  try {
+    return (await stat(join(dir, 'vendor', 'autoload.php'))).isFile()
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -723,22 +763,28 @@ export async function ensureWorktree(localRepoPath: string, sourceBranch: string
  * phpunit/static analysis run against real dependencies instead of falling
  * back to static-only. Links point INTO the worktree only — the primary
  * checkout is never written to — and `git worktree remove --force` deletes
- * the links along with the worktree. Missing sources are a warning, not an
- * error: the review still runs, the auditor discloses it.
+ * the links along with the worktree. Missing sources, or targets that
+ * already exist (e.g. Magento's tracked `vendor/.htaccess` stub), are
+ * skipped quietly: the review still runs, the auditor discloses it.
  */
 export async function linkVendorIntoWorktree(localRepoPath: string, worktreePath: string): Promise<string[]> {
   const linked: string[] = []
-  const candidates: Array<{ source: string; target: string; dir: boolean }> = [
-    { source: join(localRepoPath, 'vendor'), target: join(worktreePath, 'vendor'), dir: true },
-    { source: join(localRepoPath, 'app', 'etc', 'env.php'), target: join(worktreePath, 'app', 'etc', 'env.php'), dir: false },
+  const candidates: Array<{ source: string; target: string; dir: boolean; needsAutoload: boolean }> = [
+    { source: join(localRepoPath, 'vendor'), target: join(worktreePath, 'vendor'), dir: true, needsAutoload: true },
+    { source: join(localRepoPath, 'app', 'etc', 'env.php'), target: join(worktreePath, 'app', 'etc', 'env.php'), dir: false, needsAutoload: false },
   ]
   let advertised = false
-  for (const { source, target, dir } of candidates) {
+  for (const { source, target, dir, needsAutoload } of candidates) {
     let isDir = false
     try {
       isDir = (await stat(source)).isDirectory()
       if (dir !== isDir) continue
     } catch {
+      continue
+    }
+    if (needsAutoload && !(await vendorHasAutoload(localRepoPath))) continue
+    if ((await lstat(target).catch(() => undefined)) !== undefined) {
+      console.error(`maestro-orchestrator: link target exists, skipping ${target}`)
       continue
     }
     try {
@@ -759,6 +805,42 @@ export async function linkVendorIntoWorktree(localRepoPath: string, worktreePath
     console.error(`maestro-orchestrator: no vendor/ in ${localRepoPath} — worktree ${worktreePath} runs without shared dependencies`)
   }
   return linked
+}
+
+/** Container path of the project root inside govard services. */
+const GOVARD_CONTAINER_WORKDIR = '/var/www/html'
+
+/**
+ * Render a compose override that bind-mounts the primary checkout's vendor/
+ * read-only into the PHP services. A host-side symlink alone dangles inside
+ * containers (absolute host path), so container tools (phpunit) need this
+ * bind to see real dependencies.
+ */
+export function buildVendorOverrideYaml(vendorHostPath: string): string {
+  const bind = `${vendorHostPath}:${GOVARD_CONTAINER_WORKDIR}/vendor:ro`
+  const service = `    volumes:\n      - ${bind}\n`
+  return `services:\n  php:\n${service}  php-debug:\n${service}`
+}
+
+/**
+ * Drop the vendor bind override into the worktree (merged by govard via
+ * `.govard/docker-compose.override.yml`). Binds only when the primary
+ * checkout carries installed deps and the worktree does not — never shadow
+ * real deps with a possibly stale bind. Returns the written path, or
+ * undefined when skipped.
+ */
+export async function writeContainerVendorOverride(localRepoPath: string, worktreePath: string): Promise<string | undefined> {
+  const vendorHostPath = join(localRepoPath, 'vendor')
+  if (!(await vendorHasAutoload(localRepoPath))) return undefined
+  // Our own host-side symlink still needs the bind (it dangles in-container);
+  // only a real installed worktree vendor makes the bind redundant.
+  const wtLink = await lstat(join(worktreePath, 'vendor')).catch(() => undefined)
+  if (wtLink?.isSymbolicLink() !== true && await vendorHasAutoload(worktreePath)) return undefined
+  const overridePath = join(worktreePath, '.govard', 'docker-compose.override.yml')
+  await mkdir(join(worktreePath, '.govard'), { recursive: true })
+  await writeFile(overridePath, buildVendorOverrideYaml(vendorHostPath), 'utf-8')
+  console.error(`maestro-orchestrator: container vendor bind ${vendorHostPath} -> ${GOVARD_CONTAINER_WORKDIR}/vendor (ro) for ${worktreePath}`)
+  return overridePath
 }
 
 async function removeWorktree(worktreePath: string): Promise<void> {
@@ -782,6 +864,9 @@ export function apply(ctx: Context, config: Config): void {
   // effect without a plugin restart.
   let effectiveAgentTimeoutMs = config.agentTimeoutMs
   async function runReviewer(worktreePath: string | undefined, payload: ReviewRequest, effective: { gitlabBaseUrl: string; gitlabToken: string; botUsername: string }, reviewProfile?: ReviewSkillProfile, modelSelection?: ModelSelection, incrementalBlock?: string): Promise<ReviewOutcome> {
+    // MR base SHA feeds govard diff-scope runs; undefined degrades to the
+    // tool's fail-fast guidance instead of a wasted govard invocation.
+    const lintDefaultBase = await fetchMrBaseSha(effective.gitlabBaseUrl, effective.gitlabToken, payload.projectId, payload.mrIid)
     const primaryOptions = agentOptionsForModel(modelSelection ?? ctx.agentDefaultModel.currentSelection())
     const fallbackOptions: ModelSelection = { provider: primaryOptions.provider, model: primaryOptions.model }
     let lastHandle: AgentHandle | undefined
@@ -816,7 +901,7 @@ export function apply(ctx: Context, config: Config): void {
               await agentCtx.plugin(ModuleCheckTool, { rootPath: worktreePath })
               await agentCtx.plugin(PhtmlEscapeScanTool, { rootPath: worktreePath })
               await agentCtx.plugin(ScopeSplitTool, { rootPath: worktreePath })
-              await agentCtx.plugin(GovardAuditLintTool, { rootPath: worktreePath })
+              await agentCtx.plugin(GovardAuditLintTool, { rootPath: worktreePath, defaultBase: lintDefaultBase })
               await agentCtx.plugin(PerfLogStatsTool, { rootPath: worktreePath })
             }
           },

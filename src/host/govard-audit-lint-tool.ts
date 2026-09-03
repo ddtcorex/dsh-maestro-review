@@ -7,7 +7,37 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 
 export const name='maestro-govard-audit-lint-tool'
 export const inject=['tools']
-export const Config:z<{rootPath?:string, timeoutMs?:number}> = z.object({rootPath:z.string(), timeoutMs:z.number()})
+export const Config:z<{rootPath?:string, timeoutMs?:number, defaultBase?:string}> = z.object({rootPath:z.string(), timeoutMs:z.number(), defaultBase:z.string()})
+
+export interface AuditLintOptions {
+  checks?: string[]
+  mode?: string
+  scope?: string
+  base?: string
+  phpVersions?: string[]
+  noLintResultCache?: boolean
+  timeout?: string
+  lintProvider?: string
+}
+
+/** Explicit call base wins, then the review-wired default (MR base_sha). */
+export function resolveLintBase(argsBase: string | undefined, defaultBase: string | undefined): string | undefined {
+  return argsBase ?? defaultBase
+}
+
+export function buildAuditCliArgs(a: AuditLintOptions): string[] {
+  const checks = a.checks && a.checks.length ? a.checks.join(',') : 'lint'
+  const mode = a.mode ?? 'auto'
+  const timeout = a.timeout ?? 'auto'
+  const lintProvider = a.lintProvider ?? 'govard'
+  const cliArgs=['audit','run','--checks',checks,'--format','json','--mode',mode,'--timeout',timeout,'--lint-provider',lintProvider]
+  if(a.scope) cliArgs.push('--scope', a.scope)
+  const base = resolveLintBase(a.base, undefined)
+  if(base) cliArgs.push('--base', base)
+  if(a.phpVersions && a.phpVersions.length) cliArgs.push('--php', a.phpVersions.join(','))
+  if(a.noLintResultCache) cliArgs.push('--no-lint-result-cache')
+  return cliArgs
+}
 
 interface SC{agent?:{session?:{header?:{cwd?:string}}}}
 function workspaceRootFor(c:string|undefined, e:unknown):string{
@@ -90,12 +120,13 @@ function run(cmd:string, args:string[], cwd:string, timeoutMs:number):Promise<{c
   })
 }
 
-export function apply(ctx:Context, config:{rootPath?:string, timeoutMs?:number}={}):void{
+export function apply(ctx:Context, config:{rootPath?:string, timeoutMs?:number, defaultBase?:string}={}):void{
   const configuredRoot=config.rootPath
   const defaultTimeout=config.timeoutMs ?? DEFAULT_TIMEOUT
+  const defaultBase=config.defaultBase
   ctx.effect(()=>ctx.tools.register(defineTool({
     name:'govard_audit_lint',
-    description:'Run govard audit --checks lint --format json and return structured phpcs/phpstan results. Use before hand-parsing text. Govard 1.67+ uses --timeout auto (framework-aware 90s-30m, 22.5m for wordpress/magento2) by default.',
+    description:'Run govard audit --checks lint --format json and return structured phpcs/phpstan results. Use before hand-parsing text. Govard 1.67+ uses --timeout auto (framework-aware 90s-30m, 22.5m for wordpress/magento2) by default. scope "diff" requires a base ref: pass base, or rely on the wired defaultBase (MR base_sha) when present.',
     parameters:{
       worktreePath:{type:'string'},
       checks:{type:'array', items:{type:'string'}},
@@ -138,19 +169,12 @@ export function apply(ctx:Context, config:{rootPath?:string, timeoutMs?:number}=
       if(timeoutMs<5000 || timeoutMs>1_800_000) return {text:'timeoutMs out of range 5000-1800000 (5s-30m). Use --timeout auto for framework-aware estimation.', truncated:false} as never
 
       const a = args as {checks?:string[]; mode?:string; scope?:string; base?:string; phpVersions?:string[]; noLintResultCache?:boolean; timeout?:string; lintProvider?:string}
-      const checks = a.checks && a.checks.length ? a.checks.join(',') : 'lint'
-      const mode = a.mode ?? 'auto'
       const scope = a.scope
-      const base = a.base
-      const phpVersionsArg = a.phpVersions
-      const noLintResultCache = a.noLintResultCache
-      const timeout = a.timeout ?? 'auto'
-      const lintProvider = a.lintProvider ?? 'govard'
-      const cliArgs=['audit','run','--checks',checks,'--format','json','--mode',mode,'--timeout',timeout,'--lint-provider',lintProvider]
-      if(scope) cliArgs.push('--scope', scope)
-      if(base) cliArgs.push('--base', base)
-      if(phpVersionsArg && phpVersionsArg.length) cliArgs.push('--php', phpVersionsArg.join(','))
-      if(noLintResultCache) cliArgs.push('--no-lint-result-cache')
+      const base = resolveLintBase(a.base, defaultBase)
+      if (scope === 'diff' && base === undefined) {
+        return {text:'scope "diff" requires a base ref (govard --base): pass base explicitly (e.g. origin/master or the MR base_sha) or mount this tool with defaultBase.', truncated:false} as never
+      }
+      const cliArgs = buildAuditCliArgs({ ...a, base })
       const result=await run('govard', cliArgs, worktreePath, timeoutMs)
       if(result.timedOut){
         return {ok:false, exitCode: result.code ?? 124, timedOut:true, worktreePath, lint:{phpcs:{violations:[]}, phpstan:{errors:[]}, pubMediaGuard:{violations:[]}}, summary:{status:null, phpVersions:[], matrixComplete:false, findingCount:0, truncated:false}, rawJson:{}, errors:[{code:'timeout', message:`timed out after ${timeoutMs}ms` }], diagnostics:result.stderr.slice(0,4000)} as never
