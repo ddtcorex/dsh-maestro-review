@@ -91,15 +91,62 @@ interface LintResultLike {
  * One-line-plus render for the agent: a bare "audit lint failed" hides the
  * violations the reviewer needs, so carry counts plus the top findings.
  */
+export interface CollectedLintFindings {
+  phpcsViolations: Array<{ path?: string; line?: number; column?: number; rule?: string; message?: string; severity?: string }>
+  phpstanErrors: Array<{ path?: string; line?: number; message?: string }>
+  pubMediaViolations: unknown[]
+  compat: Array<{ tool?: string; path?: string; line?: number; rule?: string; message?: string }>
+  total: number
+}
+
+/**
+ * Collect findings across govard audit JSON shapes. The live envelope nests
+ * them at results[].evidence.php_results[].findings (older callers used a
+ * top-level findings array or evidence.php_results) — and non-phpcs/phpstan
+ * tools (e.g. M2-LINT-COMPAT internal errors) go to the compat bucket
+ * instead of being silently dropped from counts.
+ */
+export function collectLintFindings(parsed: unknown): CollectedLintFindings {
+  const p = (parsed ?? {}) as Record<string, any>
+  const lists: unknown[][] = []
+  if (Array.isArray(p.findings)) lists.push(p.findings)
+  const ev = p.evidence as Record<string, any> | undefined
+  if (Array.isArray(ev?.php_results)) lists.push(...ev.php_results.map((r: any) => r?.findings).filter(Array.isArray))
+  if (Array.isArray(p.php_results)) lists.push(...p.php_results.map((r: any) => r?.findings).filter(Array.isArray))
+  if (Array.isArray(p.results)) {
+    for (const r of p.results as Array<Record<string, any>>) {
+      const e = r?.evidence as Record<string, any> | undefined
+      const pr = e?.php_results ?? r?.php_results
+      if (Array.isArray(pr)) lists.push(...pr.map((x: any) => x?.findings).filter(Array.isArray))
+      if (Array.isArray(r?.findings)) lists.push(r.findings)
+    }
+  }
+  const out: CollectedLintFindings = { phpcsViolations: [], phpstanErrors: [], pubMediaViolations: [], compat: [], total: 0 }
+  for (const list of lists) {
+    for (const f of list as Array<Record<string, any>>) {
+      if (f?.tool === 'phpstan') out.phpstanErrors.push({ path: f.path, line: f.line, message: f.message })
+      else if (f?.tool === 'phpcs') {
+        if (f.path?.includes('pub/media') || f.rule?.includes('PubMedia')) out.pubMediaViolations.push(f)
+        else out.phpcsViolations.push({ path: f.path, line: f.line, column: f.column, rule: f.rule, message: f.message, severity: f.severity })
+      } else if (f && typeof f === 'object') {
+        out.compat.push({ tool: f.tool, path: f.path, line: f.line, rule: f.rule, message: f.message })
+      }
+    }
+  }
+  out.total = out.phpcsViolations.length + out.phpstanErrors.length + out.pubMediaViolations.length + out.compat.length
+  return out
+}
+
 export function lintResultText(v: LintResultLike): string {
   if (v.ok) return 'audit lint passed'
   const phpcs = v.lint?.phpcs?.violations ?? []
   const phpstan = v.lint?.phpstan?.errors ?? []
   const pubMedia = v.lint?.pubMediaGuard?.violations ?? []
-  const total = v.summary?.findingCount ?? phpcs.length + phpstan.length + pubMedia.length
-  const bits: string[] = [`audit lint failed — ${total} finding(s) (phpcs ${phpcs.length}, phpstan ${phpstan.length}, pubMedia ${pubMedia.length})`]
-  const top = [...phpcs.map(x => ({ ...x, tool: 'phpcs' })), ...phpstan.map(x => ({ ...x, tool: 'phpstan' })), ...pubMedia.map(x => ({ ...x, tool: 'pubMedia' }))].slice(0, 5)
-  for (const f of top) bits.push(`- [${f.tool}] ${f.path ?? '?'}:${f.line ?? '?'}${f.rule !== undefined ? ` ${f.rule}` : ''}`)
+  const compat = (v.lint as Record<string, any> | undefined)?.compat?.findings ?? []
+  const total = v.summary?.findingCount ?? phpcs.length + phpstan.length + pubMedia.length + compat.length
+  const bits: string[] = [`audit lint failed — ${total} finding(s) (phpcs ${phpcs.length}, phpstan ${phpstan.length}, pubMedia ${pubMedia.length}, compat ${compat.length})`]
+  const top = [...phpcs.map(x => ({ ...x, tool: 'phpcs' })), ...phpstan.map(x => ({ ...x, tool: 'phpstan' })), ...pubMedia.map(x => ({ ...x, tool: 'pubMedia' })), ...compat.map((x: Record<string, any>) => ({ ...x, tool: x.tool ?? 'compat' }))].slice(0, 5)
+  for (const f of top) bits.push(`- [${f.tool}] ${f.path ?? (f.message ?? '?').toString().slice(0, 120)}${f.path !== undefined ? `:${f.line ?? '?'}` : ''}${f.rule !== undefined ? ` ${f.rule}` : ''}`)
   if (v.exitCode !== undefined) bits.push(`exit ${v.exitCode}`)
   const diag = (v.diagnostics ?? '').split('\n')[0]?.trim()
   if (total === 0 && diag !== '' && diag !== undefined) bits.push(diag.slice(0, 200))
@@ -201,20 +248,13 @@ export function apply(ctx:Context, config:{rootPath?:string, timeoutMs?:number, 
       if(!parsed){
         return {ok:false, exitCode: result.code ?? 1, timedOut:false, worktreePath, lint:{phpcs:{violations:[]}, phpstan:{errors:[]}, pubMediaGuard:{violations:[]}}, summary:{status:null, phpVersions:[], matrixComplete:false, findingCount:0, truncated:false}, rawJson:{}, errors:[{code:'parse_error', message:'stdout not JSON'}], diagnostics:(cleaned+result.stderr).slice(0,4000)} as never
       }
-      const findings:Array<any>=parsed.findings ?? parsed.evidence?.php_results?.flatMap((r:any)=>r.findings) ?? []
-      const phpcsViolations:any[]=[]
-      const phpstanErrors:any[]=[]
-      const pubMediaViolations:any[]=[]
-      for(const f of findings){
-        if(f.tool==='phpstan') phpstanErrors.push({path:f.path, line:f.line, message:f.message})
-        else if(f.tool==='phpcs'){
-          if(f.path?.includes('pub/media') || f.rule?.includes('PubMedia')) pubMediaViolations.push(f)
-          else phpcsViolations.push({path:f.path, line:f.line, column:f.column, rule:f.rule, message:f.message, severity:f.severity})
-        }
-      }
+      const collected = collectLintFindings(parsed)
+      const phpcsViolations = collected.phpcsViolations
+      const phpstanErrors = collected.phpstanErrors
+      const pubMediaViolations = collected.pubMediaViolations
       const status=parsed.status ?? (result.code===0?'passed':'failed')
       const phpVersions=parsed.php_versions ?? parsed.phpVersions ?? []
-      const findingCount=findings.length
+      const findingCount=collected.total
       const sessionId = parsed.session_id ?? parsed.sessionId ?? undefined
       const runId = parsed.run_id ?? parsed.runId ?? undefined
       return {
@@ -226,7 +266,7 @@ export function apply(ctx:Context, config:{rootPath?:string, timeoutMs?:number, 
         ...(runId ? { runId: String(runId) } : {}),
         rawJson: parsed as Record<string, unknown>,
         summary:{status, phpVersions, matrixComplete:true, findingCount, truncated: findingCount>100},
-        lint:{phpcs:{violations:phpcsViolations}, phpstan:{errors:phpstanErrors}, pubMediaGuard:{violations:pubMediaViolations}},
+        lint:{phpcs:{violations:phpcsViolations}, phpstan:{errors:phpstanErrors}, pubMediaGuard:{violations:pubMediaViolations}, compat:{findings:collected.compat}},
         errors:[],
         diagnostics: result.stderr.slice(0,4000),
       } as never
