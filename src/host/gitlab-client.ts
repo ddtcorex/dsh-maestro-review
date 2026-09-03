@@ -45,6 +45,35 @@ interface GitlabDiscussion {
   notes: GitlabDiscussionNote[]
 }
 
+interface OwnThread {
+  discussionId: string
+  path: string
+  line: number | null
+  lastCommentBody: string
+  resolved: boolean
+}
+
+/**
+ * Pick this bot's inline threads out of the MR discussions list, including
+ * resolved ones (flagged) so a same-SHA re-review can reply-update instead
+ * of posting duplicates. Pure for unit testing.
+ */
+export function selectOwnThreads(
+  discussions: GitlabDiscussion[],
+  botUsername: string,
+): { threads: OwnThread[]; totalDiscussions: number } {
+  const threads = discussions
+    .filter(d => d.notes.length > 0 && d.notes[0].author.username === botUsername && d.notes[0].position !== undefined)
+    .map(d => ({
+      discussionId: d.id,
+      path: d.notes[0].position!.new_path,
+      line: d.notes[0].position!.new_line,
+      lastCommentBody: d.notes[d.notes.length - 1].body,
+      resolved: d.notes[0].resolved === true,
+    }))
+  return { threads, totalDiscussions: discussions.length }
+}
+
 export function apply(ctx: Context, config: Config): void {
   const apiBase = `${config.baseUrl}/api/v4/projects/${config.projectId}/merge_requests/${config.mrIid}`
   const headers = { 'PRIVATE-TOKEN': config.token }
@@ -104,11 +133,34 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.tools.register(defineTool({
     name: 'gitlab_list_own_review_threads',
-    description: 'List this merge request\'s unresolved inline discussion threads previously created by this bot account, so you can reply instead of duplicating.',
+    description: 'List this merge request\'s inline discussion threads previously created by this bot account (both unresolved and resolved, flagged), so you can reply instead of duplicating. Returns {threads, totalDiscussions}.',
     parameters: {},
     output: {
-      schema: { type: 'object', additionalProperties: false, properties: { text: { type: 'string', required: true } } },
-      render: (_args, value) => [{ type: 'text', text: value.text }],
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          threads: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                discussionId: { type: 'string', required: true },
+                path: { type: 'string', required: true },
+                line: { type: 'number' },
+                lastCommentBody: { type: 'string', required: true },
+                resolved: { type: 'boolean', required: true },
+              },
+            },
+          },
+          totalDiscussions: { type: 'number', required: true },
+        },
+      },
+      render: (_args, value: { threads: OwnThread[]; totalDiscussions: number }) => [{
+        type: 'text',
+        text: `${value.totalDiscussions} discussion(s) on this MR, ${value.threads.length} own inline thread(s):\n${JSON.stringify(value.threads)}`,
+      }],
     },
     async execute() {
       const response = await fetch(`${apiBase}/discussions`, { headers })
@@ -116,10 +168,7 @@ export function apply(ctx: Context, config: Config): void {
         throw new Error(`GitLab API error ${response.status}: ${await response.text()}`)
       }
       const discussions = await response.json() as GitlabDiscussion[]
-      const ownThreads = discussions
-        .filter(d => d.notes.length > 0 && d.notes[0].author.username === config.botUsername && !d.notes[0].resolved && d.notes[0].position !== undefined)
-        .map(d => ({ discussionId: d.id, path: d.notes[0].position!.new_path, line: d.notes[0].position!.new_line, lastCommentBody: d.notes[d.notes.length - 1].body }))
-      return { text: JSON.stringify(ownThreads) }
+      return selectOwnThreads(discussions, config.botUsername)
     },
   }))
 

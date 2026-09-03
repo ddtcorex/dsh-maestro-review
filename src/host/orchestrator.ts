@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile, symlink, stat } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { promisify } from 'node:util'
@@ -29,7 +29,7 @@ import * as ScopeSplitTool from './scope-split-tool.js'
 import * as GovardAuditLintTool from './govard-audit-lint-tool.js'
 import * as PerfLogStatsTool from './perf-log-stats-tool.js'
 import * as ReviewToolPolicy from './tool-policy.js'
-import type { ReviewFinding } from './review-findings-tool.js'
+import type { ReviewFinding, FindingSeverity } from './review-findings-tool.js'
 import type { ReviewRequest } from './events.js'
 import { loadUserConfig, type MaestroUserConfig, type ReviewModelSelection } from './config-store.js'
 import { hasCompletedReview, lastCompletedReview, pruneHistory, recordReviewFinish, recordReviewStart } from './review-history.js'
@@ -59,6 +59,40 @@ const execFileAsync = promisify(execFile)
 const GIT_TIMEOUT_MS = 60_000
 
 /**
+ * Finding severity, assigned by the reviewer. Display order is fixed
+ * (blocking first) wherever counts are rendered.
+ */
+export const SEVERITY_ORDER: readonly FindingSeverity[] = ['blocking', 'major', 'minor', 'nit'] as const
+
+const SEVERITY_LABEL: Record<FindingSeverity, string> = {
+  blocking: '🔴 Blocking',
+  major: '🟡 Major',
+  minor: '🔵 Minor',
+  nit: '⚪ Nit',
+}
+
+/** Missing or unknown severities degrade to `minor` — never drop a finding. */
+export function normalizeFindingSeverity(severity: unknown): FindingSeverity {
+  return severity === 'blocking' || severity === 'major' || severity === 'minor' || severity === 'nit'
+    ? severity
+    : 'minor'
+}
+
+export function severityPrefix(severity: unknown): string {
+  return SEVERITY_LABEL[normalizeFindingSeverity(severity)]
+}
+
+/** Count findings per severity; zero counts are omitted. */
+export function countFindingSeverities(findings: ReviewFinding[]): Partial<Record<FindingSeverity, number>> {
+  const counts: Partial<Record<FindingSeverity, number>> = {}
+  for (const finding of findings) {
+    const level = normalizeFindingSeverity(finding.severity)
+    counts[level] = (counts[level] ?? 0) + 1
+  }
+  return counts
+}
+
+/**
  * Build a user-friendly GitLab Markdown comment for a completed review.
  * Shared design language with `reviewDigestText` (Telegram HTML) — same
  * header, status, findings structure, footer. Both use `🤖 Maestro Review`
@@ -72,7 +106,7 @@ export function buildReviewComment(opts: {
   profile?: string
   summary: string
   failures: string[]
-  findings?: { newCount: number; replyCount: number }
+  findings?: { newCount: number; replyCount: number; severityCounts?: Partial<Record<FindingSeverity, number>> }
   durationMs?: number
   isDiffOnly?: boolean
   isDiscussion?: boolean
@@ -97,6 +131,12 @@ export function buildReviewComment(opts: {
         const parts: string[] = []
         if (opts.findings.newCount > 0) parts.push(`💬 ${opts.findings.newCount} new`)
         if (opts.findings.replyCount > 0) parts.push(`🔁 ${opts.findings.replyCount} updated`)
+        if (opts.findings.severityCounts !== undefined) {
+          for (const level of SEVERITY_ORDER) {
+            const count = opts.findings.severityCounts[level] ?? 0
+            if (count > 0) parts.push(`${SEVERITY_LABEL[level].split(' ')[0]} ${count} ${level}`)
+          }
+        }
         if (parts.length === 0) parts.push('no inline findings')
         return `\n\n**Findings:** ${parts.join(' · ')}`
       })()
@@ -223,6 +263,7 @@ export const Config: z<Config> = z.object({
 export interface ReviewOutcome {
   summary: string
   failures: string[]
+  severityCounts?: Partial<Record<FindingSeverity, number>>
 }
 
 /**
@@ -374,10 +415,12 @@ export async function postReviewFindings(findings: ReviewFinding[], config: Gitl
   const headers = { 'PRIVATE-TOKEN': config.token, 'Content-Type': 'application/json' }
   for (const finding of findings) {
     let response: Response
+    const label = severityPrefix(finding.severity)
+    const body = finding.body.startsWith(label) ? finding.body : `${label}\n\n${finding.body}`
     if (finding.status === 'reply') {
       if (finding.discussionId === undefined) throw new Error('reply finding missing discussionId')
       response = await fetcher(`${apiBase}/discussions/${encodeURIComponent(finding.discussionId)}/notes`, {
-        method: 'POST', headers, body: JSON.stringify({ body: finding.body }),
+        method: 'POST', headers, body: JSON.stringify({ body }),
       })
     } else {
       if (finding.path === undefined || finding.line === undefined) throw new Error('new finding missing path or line')
@@ -395,12 +438,12 @@ export async function postReviewFindings(findings: ReviewFinding[], config: Gitl
         // Line not in diff — fallback to MR note so finding is not silently lost.
         response = await fetcher(`${apiBase}/notes`, {
           method: 'POST', headers,
-          body: JSON.stringify({ body: `**Inline fallback — \`${finding.path}:${finding.line}\` line is not in current MR diff**\n\n${finding.body}` }),
+          body: JSON.stringify({ body: `**Inline fallback — \`${finding.path}:${finding.line}\` line is not in current MR diff**\n\n${body}` }),
         })
       } else {
         response = await fetcher(`${apiBase}/discussions`, {
           method: 'POST', headers,
-          body: JSON.stringify({ body: finding.body, position: {
+          body: JSON.stringify({ body, position: {
             position_type: 'text', ...snapshot.diffRefs, old_path: change.old_path, new_path: change.new_path,
             ...linePosition.oldLine === undefined ? {} : { old_line: linePosition.oldLine },
             ...linePosition.newLine === undefined ? {} : { new_line: linePosition.newLine },
@@ -498,7 +541,7 @@ export async function runReviewAndAudit(payload: ReviewRequest, deps: ReviewAndA
       ])
       const labels = ['Reviewer', 'Auditor']
       if (settled[0].status === 'fulfilled') {
-        const { summary, failures } = settled[0].value
+        const { summary, failures, severityCounts } = settled[0].value
         // Try to parse findings counts from summary like "2 new inline comment(s), 1 thread(s) updated."
         const summaryText = summary ?? ''
         const newMatch = /(\d+)\s+new inline/.exec(summaryText)
@@ -515,7 +558,7 @@ export async function runReviewAndAudit(payload: ReviewRequest, deps: ReviewAndA
               profile: (deps as unknown as { reviewProfile?: string }).reviewProfile,
               summary: summaryText,
               failures,
-              findings: { newCount, replyCount },
+              findings: { newCount, replyCount, severityCounts },
             })
           : `## 🤖 Maestro Review\n\n**\`${payload.projectPath}\` !${payload.mrIid}** · ✅ Completed · \`${payload.mode}\`${(deps as unknown as { reviewProfile?: string }).reviewProfile !== undefined ? ` · \`${(deps as unknown as { reviewProfile: string }).reviewProfile}\`` : ''}\n\n${summaryText}${failures.length > 0 ? `\n\n<details>\n<summary>⚠️ Failed to post (${failures.length})</summary>\n\n${failures.map((f) => `- \`${f}\``).join('\n')}\n\n</details>` : ''}`
         sections.push(richOpts)
@@ -670,7 +713,52 @@ export async function ensureWorktree(localRepoPath: string, sourceBranch: string
     .catch(() => {})
   await execFileAsync('git', ['worktree', 'add', '--', worktreePath, `origin/${sourceBranch}`], { cwd: localRepoPath, timeout: GIT_TIMEOUT_MS })
   await writeFile(join(worktreePath, '.govard.local.yml'), govardWorktreeOverride(projectId, mrIid, keySuffix), 'utf-8')
+  await linkVendorIntoWorktree(localRepoPath, worktreePath)
   return worktreePath
+}
+
+/**
+ * Share the primary checkout's `vendor/` (and `app/etc/env.php` when the
+ * auditor needs a database) into the review worktree via symlinks, so
+ * phpunit/static analysis run against real dependencies instead of falling
+ * back to static-only. Links point INTO the worktree only — the primary
+ * checkout is never written to — and `git worktree remove --force` deletes
+ * the links along with the worktree. Missing sources are a warning, not an
+ * error: the review still runs, the auditor discloses it.
+ */
+export async function linkVendorIntoWorktree(localRepoPath: string, worktreePath: string): Promise<string[]> {
+  const linked: string[] = []
+  const candidates: Array<{ source: string; target: string; dir: boolean }> = [
+    { source: join(localRepoPath, 'vendor'), target: join(worktreePath, 'vendor'), dir: true },
+    { source: join(localRepoPath, 'app', 'etc', 'env.php'), target: join(worktreePath, 'app', 'etc', 'env.php'), dir: false },
+  ]
+  let advertised = false
+  for (const { source, target, dir } of candidates) {
+    let isDir = false
+    try {
+      isDir = (await stat(source)).isDirectory()
+      if (dir !== isDir) continue
+    } catch {
+      continue
+    }
+    try {
+      if (!advertised) {
+        const sha = await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: localRepoPath, timeout: GIT_TIMEOUT_MS })
+          .then(({ stdout }) => stdout.trim()).catch(() => 'unknown')
+        console.error(`maestro-orchestrator: linking vendor from ${localRepoPath} @ ${sha} into ${worktreePath}`)
+        advertised = true
+      }
+      if (!dir) await mkdir(join(worktreePath, 'app', 'etc'), { recursive: true })
+      await symlink(source, target, dir ? 'dir' : 'file')
+      linked.push(target)
+    } catch (err) {
+      console.error(`maestro-orchestrator: failed to link ${source} into worktree:`, err)
+    }
+  }
+  if (!advertised) {
+    console.error(`maestro-orchestrator: no vendor/ in ${localRepoPath} — worktree ${worktreePath} runs without shared dependencies`)
+  }
+  return linked
 }
 
 async function removeWorktree(worktreePath: string): Promise<void> {
@@ -745,7 +833,7 @@ export function apply(ctx: Context, config: Config): void {
           : `Call maestro_load_review_profile with {"profile":"${reviewProfile}"} before examining code. `
         let scopePrompt = payload.scope.kind === 'discussion'
           ? `${profileInstruction}Review only the requested inline discussion ${payload.scope.discussionId} at ${payload.scope.path}:${payload.scope.line}. Do not review unrelated files or start a broad audit. Call gitlab_get_mr_diff, then call report_review_findings exactly once when done.`
-          : `${profileInstruction}Review this merge request (${payload.mode} mode). Call gitlab_list_own_review_threads and gitlab_get_mr_diff first, then call report_review_findings exactly once when done.`
+          : `${profileInstruction}Review this merge request (${payload.mode} mode). Call gitlab_list_own_review_threads and gitlab_get_mr_diff first, then call report_review_findings exactly once when done. DEDUP RULE: when a finding matches the substance of an existing own thread (same file and same underlying issue, even if worded differently — including resolved threads, whose reply reopens them), report it as {status: "reply", discussionId} instead of posting a new thread. Use status "new" only for issues with no matching thread.`
         if (incrementalBlock !== undefined) scopePrompt = `${incrementalBlock}\n\n${scopePrompt}`
         handle.agent.followup(createUserMessage({
           content: [{ type: 'text', text: scopePrompt }],
@@ -786,7 +874,7 @@ export function apply(ctx: Context, config: Config): void {
             failures.push(`${locator}: ${err instanceof Error ? err.message : String(err)}`)
           }
         }
-        return { summary: `${postedNew} new inline comment(s), ${postedReplies} thread(s) updated.`, failures }
+        return { summary: `${postedNew} new inline comment(s), ${postedReplies} thread(s) updated.`, failures, severityCounts: countFindingSeverities(capturedFindings) }
       } finally {
         await handle.dispose()
       }
