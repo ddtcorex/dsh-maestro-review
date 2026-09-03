@@ -19,12 +19,12 @@
     "client"
   ],
   "bin": {
-    "runner": "tsx src/runner/cli.ts"
+    "runner": "lib/runner/cli.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && tsc -p tsconfig.runner.json",
     "test": "vitest run",
-    "verify": "tsc --noEmit"
+    "verify": "tsc --noEmit && tsc -p tsconfig.runner.json --noEmit"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
