@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { ensureWorktree } from '../src/host/orchestrator.js'
+import { ensureWorktree, linkVendorIntoWorktree } from '../src/host/orchestrator.js'
 
 function initRepo(withVendor: boolean): string {
   const dir = mkdtempSync(join(tmpdir(), 'orch-vendor-'))
@@ -51,6 +51,23 @@ describe('ensureWorktree vendor symlink', () => {
       expect(existsSync(join(wt, 'vendor'))).toBe(false)
     } finally {
       cleanup(dir, worktreePath)
+    }
+  })
+
+  it('linkVendorIntoWorktree skips quietly when the target already exists', async () => {
+    const src = mkdtempSync(join(tmpdir(), 'orch-link-src-'))
+    const wt = mkdtempSync(join(tmpdir(), 'orch-link-wt-'))
+    try {
+      mkdirSync(join(src, 'vendor'), { recursive: true })
+      writeFileSync(join(src, 'vendor', 'autoload.php'), '<?php // fixture')
+      mkdirSync(join(wt, 'vendor'), { recursive: true })
+      writeFileSync(join(wt, 'vendor', '.htaccess'), 'stub')
+      const linked = await linkVendorIntoWorktree(src, wt)
+      expect(linked).not.toContain(join(wt, 'vendor'))
+      expect(readFileSync(join(wt, 'vendor', '.htaccess'), 'utf8')).toBe('stub')
+    } finally {
+      rmSync(src, { recursive: true, force: true })
+      rmSync(wt, { recursive: true, force: true })
     }
   })
 })

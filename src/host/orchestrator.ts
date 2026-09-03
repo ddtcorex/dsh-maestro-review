@@ -744,27 +744,47 @@ export async function ensureWorktree(localRepoPath: string, sourceBranch: string
 }
 
 /**
+ * A vendor dir only counts as installed dependencies when the composer
+ * autoloader is a real file. Magento tracks `vendor/.htaccess`, so every
+ * worktree has a vendor/ stub — that stub must not pass for real deps, and
+ * must not block the container bind that provides them.
+ */
+export async function vendorHasAutoload(dir: string): Promise<boolean> {
+  try {
+    return (await stat(join(dir, 'vendor', 'autoload.php'))).isFile()
+  } catch {
+    return false
+  }
+}
+
+/**
  * Share the primary checkout's `vendor/` (and `app/etc/env.php` when the
  * auditor needs a database) into the review worktree via symlinks, so
  * phpunit/static analysis run against real dependencies instead of falling
  * back to static-only. Links point INTO the worktree only — the primary
  * checkout is never written to — and `git worktree remove --force` deletes
- * the links along with the worktree. Missing sources are a warning, not an
- * error: the review still runs, the auditor discloses it.
+ * the links along with the worktree. Missing sources, or targets that
+ * already exist (e.g. Magento's tracked `vendor/.htaccess` stub), are
+ * skipped quietly: the review still runs, the auditor discloses it.
  */
 export async function linkVendorIntoWorktree(localRepoPath: string, worktreePath: string): Promise<string[]> {
   const linked: string[] = []
-  const candidates: Array<{ source: string; target: string; dir: boolean }> = [
-    { source: join(localRepoPath, 'vendor'), target: join(worktreePath, 'vendor'), dir: true },
-    { source: join(localRepoPath, 'app', 'etc', 'env.php'), target: join(worktreePath, 'app', 'etc', 'env.php'), dir: false },
+  const candidates: Array<{ source: string; target: string; dir: boolean; needsAutoload: boolean }> = [
+    { source: join(localRepoPath, 'vendor'), target: join(worktreePath, 'vendor'), dir: true, needsAutoload: true },
+    { source: join(localRepoPath, 'app', 'etc', 'env.php'), target: join(worktreePath, 'app', 'etc', 'env.php'), dir: false, needsAutoload: false },
   ]
   let advertised = false
-  for (const { source, target, dir } of candidates) {
+  for (const { source, target, dir, needsAutoload } of candidates) {
     let isDir = false
     try {
       isDir = (await stat(source)).isDirectory()
       if (dir !== isDir) continue
     } catch {
+      continue
+    }
+    if (needsAutoload && !(await vendorHasAutoload(localRepoPath))) continue
+    if ((await lstat(target).catch(() => undefined)) !== undefined) {
+      console.error(`maestro-orchestrator: link target exists, skipping ${target}`)
       continue
     }
     try {
@@ -804,30 +824,18 @@ export function buildVendorOverrideYaml(vendorHostPath: string): string {
 
 /**
  * Drop the vendor bind override into the worktree (merged by govard via
- * `.govard/docker-compose.override.yml`). Skips when the primary checkout
- * has no vendor/ or the worktree already carries its own real vendor dir
- * (never shadow real deps with a possibly stale bind). Returns the written
- * path, or undefined when skipped.
+ * `.govard/docker-compose.override.yml`). Binds only when the primary
+ * checkout carries installed deps and the worktree does not — never shadow
+ * real deps with a possibly stale bind. Returns the written path, or
+ * undefined when skipped.
  */
 export async function writeContainerVendorOverride(localRepoPath: string, worktreePath: string): Promise<string | undefined> {
   const vendorHostPath = join(localRepoPath, 'vendor')
-  try {
-    if (!(await stat(vendorHostPath)).isDirectory()) return undefined
-  } catch {
-    return undefined
-  }
-  try {
-    const wtVendor = join(worktreePath, 'vendor')
-    const lst = await lstat(wtVendor).catch(() => undefined)
-    // A real directory of its own wins over the bind; our own symlink (or
-    // nothing) means the bind is safe — the mount covers the link target.
-    if (lst !== undefined && !lst.isSymbolicLink()) {
-      const st = await stat(wtVendor).catch(() => undefined)
-      if (st !== undefined && st.isDirectory()) return undefined
-    }
-  } catch {
-    // Stat race — fall through and attempt the write.
-  }
+  if (!(await vendorHasAutoload(localRepoPath))) return undefined
+  // Our own host-side symlink still needs the bind (it dangles in-container);
+  // only a real installed worktree vendor makes the bind redundant.
+  const wtLink = await lstat(join(worktreePath, 'vendor')).catch(() => undefined)
+  if (wtLink?.isSymbolicLink() !== true && await vendorHasAutoload(worktreePath)) return undefined
   const overridePath = join(worktreePath, '.govard', 'docker-compose.override.yml')
   await mkdir(join(worktreePath, '.govard'), { recursive: true })
   await writeFile(overridePath, buildVendorOverrideYaml(vendorHostPath), 'utf-8')

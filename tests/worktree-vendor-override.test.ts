@@ -64,4 +64,26 @@ describe('writeContainerVendorOverride', () => {
       cleanup(src, wt)
     }
   })
+
+  it('still binds when the worktree vendor/ holds only a tracked .htaccess stub', async () => {
+    const src = primary(true), wt = worktree(false)
+    mkdirSync(join(wt, 'vendor'), { recursive: true })
+    writeFileSync(join(wt, 'vendor', '.htaccess'), 'stub')
+    try {
+      const out = await writeContainerVendorOverride(src, wt)
+      expect(out).toBe(join(wt, '.govard', 'docker-compose.override.yml'))
+    } finally {
+      cleanup(src, wt)
+    }
+  })
+
+  it('skips the bind when the primary vendor/ has no installed autoload.php', async () => {
+    const src = primary(false), wt = worktree(false)
+    mkdirSync(join(src, 'vendor'), { recursive: true })
+    try {
+      expect(await writeContainerVendorOverride(src, wt)).toBeUndefined()
+    } finally {
+      cleanup(src, wt)
+    }
+  })
 })
