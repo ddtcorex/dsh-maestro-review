@@ -2,9 +2,12 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { join } from 'node:path'
 import type { ReviewRequest, ReviewResult } from '../events.js'
+import type { ReviewSkillProfile } from '../skills-tool.js'
 
 export const name = 'maestro-review-ci-trigger'
 export const inject = ['reviewRunner'] as const
+
+const REVIEW_PROFILES = ['magento2', 'laravel', 'symfony', 'wordpress', 'generic'] as const
 
 export interface CiEnvConfig {
   gitlabBaseUrl: string
@@ -13,6 +16,7 @@ export interface CiEnvConfig {
   mrIid: number
   mode: 'quick' | 'deep'
   dryRun: boolean
+  reviewProfile?: ReviewSkillProfile
 }
 
 export const CiEnvConfig: z<CiEnvConfig> = z.object({
@@ -22,6 +26,7 @@ export const CiEnvConfig: z<CiEnvConfig> = z.object({
   mrIid: z.number().required(),
   mode: z.union([z.const('quick'), z.const('deep')]).default('quick'),
   dryRun: z.boolean().default(false),
+  reviewProfile: z.union([z.const('magento2'), z.const('laravel'), z.const('symfony'), z.const('wordpress'), z.const('generic')]),
 })
 
 /**
@@ -33,6 +38,9 @@ export const CiEnvConfig: z<CiEnvConfig> = z.object({
 export function parseCiEnvConfig(env: Record<string, string | undefined>): CiEnvConfig {
   if (env.GITLAB_HOST === undefined) throw new Error('missing GITLAB_HOST')
   if (env.MAESTRO_GITLAB_TOKEN === undefined) throw new Error('missing MAESTRO_GITLAB_TOKEN')
+  if (env.REVIEW_PROFILE !== undefined && !(REVIEW_PROFILES as readonly string[]).includes(env.REVIEW_PROFILE)) {
+    throw new Error(`unsupported REVIEW_PROFILE "${env.REVIEW_PROFILE}" (supported: ${REVIEW_PROFILES.join(', ')})`)
+  }
   return CiEnvConfig({
     gitlabBaseUrl: `https://${env.GITLAB_HOST}`,
     gitlabToken: env.MAESTRO_GITLAB_TOKEN,
@@ -40,6 +48,7 @@ export function parseCiEnvConfig(env: Record<string, string | undefined>): CiEnv
     mrIid: Number(env.MR_IID),
     mode: env.REVIEW_MODE === 'deep' ? 'deep' : 'quick',
     dryRun: env.REVIEW_DRY_RUN === '1',
+    reviewProfile: env.REVIEW_PROFILE as ReviewSkillProfile | undefined,
   })
 }
 
@@ -71,6 +80,7 @@ export async function runCiTrigger(
     trigger: 'mention',
     mode: config.mode,
     scope: { kind: 'mr' },
+    reviewProfile: config.reviewProfile,
   }
   const result = await ctx.reviewRunner(request)
   const { writeFile } = deps.writeFile !== undefined ? { writeFile: deps.writeFile } : await import('node:fs/promises')

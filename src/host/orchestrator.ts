@@ -284,6 +284,13 @@ export interface Config {
    * Deployment-level model pin, below Maestro Settings in precedence. Lets a
    * headless profile (reviewer-ci) select the review model from env vars —
    * e.g. REVIEW_MODEL_PROVIDER/REVIEW_MODEL — where no Settings UI exists.
+   *
+   * Deliberately absent from the zod schema below: schemastery object schemas
+   * always descend into inner fields (probed — even `.required(false)` still
+   * throws on undefined), so declaring it would fail every boot without the
+   * vars. Unknown keys pass validation through (same precedent as mapping-level
+   * reviewModel, which the projectMappings schema doesn't declare either),
+   * and resolveReviewModel reads it at review time.
    */
   reviewModel?: ReviewModelSelection | null
 }
@@ -300,11 +307,6 @@ export const Config: z<Config> = z.object({
   gitlabToken: z.string().role('secret'),
   botUsername: z.string().required(),
   agentTimeoutMs: z.number().min(1000).default(DEFAULT_AGENT_TIMEOUT_MS),
-  reviewModel: z.object({
-    provider: z.string().required(),
-    model: z.string().required(),
-    reasoningEffort: z.string(),
-  }),
 })
 
 export interface ReviewOutcome {
@@ -1260,7 +1262,7 @@ export function apply(ctx: Context, config: Config): void {
             return { ok: true, summary: 'Deep review declined (unmapped project)', failures: [], durationMs: Date.now() - t0 }
           }
           const diffBody = await runDiffOnlyReview(payload, {
-            runReviewer: (p) => runReviewer(undefined, p, resolved, undefined, reviewModelSelection, incrementalBlock),
+            runReviewer: (p) => runReviewer(undefined, p, resolved, payload.reviewProfile, reviewModelSelection, incrementalBlock),
             postComment,
             replyToDiscussion,
             writeFailedReport,
@@ -1289,7 +1291,7 @@ export function apply(ctx: Context, config: Config): void {
           const isBranchNotFound = (err as { code?: string })?.code === 'BRANCH_NOT_FOUND' || isBranchNotFoundError(err)
           if (isBranchNotFound) {
             const diffBody = await runDiffOnlyReview(payload, {
-              runReviewer: (p) => runReviewer(undefined, p, resolved, undefined, reviewModelSelection, incrementalBlock),
+              runReviewer: (p) => runReviewer(undefined, p, resolved, payload.reviewProfile, reviewModelSelection, incrementalBlock),
               postComment,
               replyToDiscussion,
               writeFailedReport,

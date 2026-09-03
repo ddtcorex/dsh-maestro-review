@@ -54,8 +54,7 @@ describe('orchestrator.apply — reviewRunner wiring', () => {
   })
 })
 
-describe('resolveReviewModel — row-config reviewModel', () => {
-  it('uses the row selection when mapping and user config are absent (CI profile case)', async () => {
+describe('resolveReviewModel — row-config reviewModel', () => {  it('uses the row selection when mapping and user config are absent (CI profile case)', async () => {
     const { resolveReviewModel } = await import('../src/host/orchestrator.js')
     expect(resolveReviewModel({}, undefined,
       { provider: 'fallback', model: 'fallback' },
@@ -84,5 +83,18 @@ describe('resolveReviewModel — row-config reviewModel', () => {
     expect(resolveReviewModel({}, undefined,
       { provider: 'fallback', model: 'fallback' }, undefined),
     ).toEqual({ provider: 'fallback', model: 'fallback' })
+  })
+})
+
+describe('Config — boot contract', () => {
+  // Regression: a declared-but-optional object schema still descends in
+  // schemastery, so the row reviewModel must stay undeclared (passthrough)
+  // or every boot without REVIEW_MODEL_* fails. Caught by container E2E.
+  it('validates without reviewModel (CI boots with no REVIEW_MODEL_*)', async () => {
+    const { Config } = await import('../src/host/orchestrator.js')
+    expect(() => Config({
+      projectMappings: [], gitlabBaseUrl: 'https://gitlab.example.com',
+      botUsername: 'maestro-bot', agentTimeoutMs: 1000,
+    })).not.toThrow()
   })
 })

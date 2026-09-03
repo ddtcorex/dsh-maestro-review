@@ -25,6 +25,26 @@ describe('parseCiEnvConfig', () => {
     expect(cfg.mode).toBe('deep')
     expect(cfg.dryRun).toBe(true)
   })
+
+  it('leaves reviewProfile undefined when REVIEW_PROFILE is absent (legacy diff-only)', () => {
+    const cfg = parseCiEnvConfig({ GITLAB_HOST: 'h', MAESTRO_GITLAB_TOKEN: 't', SOURCE_PROJECT_ID: '1', MR_IID: '2' })
+    expect(cfg.reviewProfile).toBeUndefined()
+  })
+
+  it('parses REVIEW_PROFILE=magento2', () => {
+    const cfg = parseCiEnvConfig({
+      GITLAB_HOST: 'h', MAESTRO_GITLAB_TOKEN: 't', SOURCE_PROJECT_ID: '1', MR_IID: '2',
+      REVIEW_PROFILE: 'magento2',
+    })
+    expect(cfg.reviewProfile).toBe('magento2')
+  })
+
+  it('throws on unsupported REVIEW_PROFILE', () => {
+    expect(() => parseCiEnvConfig({
+      GITLAB_HOST: 'h', MAESTRO_GITLAB_TOKEN: 't', SOURCE_PROJECT_ID: '1', MR_IID: '2',
+      REVIEW_PROFILE: 'drupal',
+    })).toThrow(/unsupported REVIEW_PROFILE/)
+  })
 })
 
 describe('fetchMrSourceBranch', () => {
@@ -74,5 +94,21 @@ describe('runCiTrigger', () => {
       delete process.env.REVIEW_REPORT_DIR
     }
     expect(writes.map(w => w[0])).toEqual(['/out/review-report.json', '/out/review-report.md'])
+  })
+
+  it('carries REVIEW_PROFILE into the ReviewRequest', async () => {
+    const cfg = parseCiEnvConfig({
+      GITLAB_HOST: 'h', MAESTRO_GITLAB_TOKEN: 'tok', SOURCE_PROJECT_ID: '1', MR_IID: '2',
+      REVIEW_PROFILE: 'magento2',
+    })
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ source_branch: 'feat/x' }), { status: 200 }))
+    let capturedRequest: unknown
+    const fakeCtx = { reviewRunner: vi.fn(async (req: unknown) => { capturedRequest = req; return { ok: true, summary: 'done', failures: [], durationMs: 5 } }) }
+    const fakeWriteFile = (async () => {}) as unknown as typeof import('node:fs/promises').writeFile
+    await runCiTrigger(fakeCtx as any, cfg, { fetcher: fetcher as unknown as typeof fetch, writeFile: fakeWriteFile })
+    expect(capturedRequest).toEqual({
+      projectPath: 'project/1', projectId: 1, mrIid: 2, sourceBranch: 'feat/x',
+      trigger: 'mention', mode: 'quick', scope: { kind: 'mr' }, reviewProfile: 'magento2',
+    })
   })
 })
