@@ -1,4 +1,6 @@
 # ddtcorex/maestro-reviewer — dedicated reviewer project
+# Image hosted on Docker Hub (public): ddtcorex/maestro-reviewer — `:latest` tracks
+# the newest image; pin to a semver tag (e.g. :0.1.0) for reproducible runs.
 # Required CI variables (Protected + Masked): MAESTRO_GITLAB_TOKEN, DEEPSEEK_API_KEY
 # Optional: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, REVIEW_MODE (quick|deep)
 # GIT_STRATEGY none — runner fetches diff via API, no checkout of reviewer repo
@@ -7,7 +9,7 @@
 # strategy: depend — source pipeline waits for reviewer status (optional, shows MR widget)
 review:
   stage: review
-  image: registry.ddtcorex.com/maestro-reviewer:0.1.0
+  image: ddtcorex/maestro-reviewer:latest
   rules: [{ if: $CI_PIPELINE_SOURCE == "pipeline" }, { if: $CI_PIPELINE_SOURCE == "trigger" }, { if: $CI_PIPELINE_SOURCE == "web", when: manual }]
   variables: { GIT_STRATEGY: none }
   script: ['/entrypoint.sh review']
