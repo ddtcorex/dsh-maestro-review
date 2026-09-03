@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { createReviewAgent } from './llm-agent.js'
 export type RunnerConfig = {
   gitlabHost: string; gitlabToken: string; sourceProjectId: number;
   mrIid: number; gitlabBaseUrl: string; mode: 'quick'|'deep'; dryRun: boolean; llmProvider?: string;
@@ -45,6 +46,16 @@ export async function main(argv: string[] = process.argv.slice(2), env: Record<s
     })
     if (!res.ok) throw new Error(`GitLab API error ${res.status}: ${await res.text()}`)
   }
+  // Build agent config from env; keys are never logged.
+  const llmProvider = env.LLM_PROVIDER ?? 'opencode-go'
+  const llmModel = env.MODEL_NAME ?? 'muse-spark-1.3-contributor'
+  const apiKey = env.OPENCODE_GO_API_KEY ?? env.DEEPSEEK_API_KEY ?? ''
+  const llmBaseUrl = env.LLM_BASE_URL ?? (llmProvider === 'opencode-go' ? 'https://api.openode.ai/v1' : 'https://api.deepseek.com/v1')
+  // createAgent synthesizes LLM findings from the diff; runner-orchestrator uses
+  // it to produce inline comments. Falls back to diff-only summary if no key.
+  const createAgent = async (_cfg: RunnerConfig, changes: unknown) =>
+    createReviewAgent({ provider: llmProvider, baseUrl: llmBaseUrl, apiKey, model: llmModel, mode: _cfg.mode },
+      (changes as { changes?: Array<{ old_path: string; new_path: string; diff: string }> })?.changes ?? [])
   function sanitizeErrorMessage(e: unknown): string {
     const raw = e instanceof Error ? e.message : String(e)
     // Strip HTML tags (example.com 404 returns HTML) and collapse whitespace, then truncate
@@ -54,7 +65,7 @@ export async function main(argv: string[] = process.argv.slice(2), env: Record<s
   type RunnerResult = Awaited<ReturnType<typeof runOnce>>
   let result: RunnerResult
   try {
-    result = await runOnce(cfg, { postComment })
+    result = await runOnce(cfg, { postComment, createAgent })
   } catch (e) {
     if (cfg.dryRun) {
       const msg = sanitizeErrorMessage(e)

@@ -116,6 +116,19 @@ export async function postReviewFindings(findings: ReviewFinding[], config: Gitl
 
 // ——— Runner orchestrator ———
 
+/** Normalize agent findings ({path,line,message,severity}) to ReviewFinding shape for posting. */
+function normalizeFindings(raw: Array<Record<string, unknown>>): ReviewFinding[] {
+  return raw
+    .filter((f): f is Record<string, unknown> => typeof f === 'object' && f !== null)
+    .map((f) => ({
+      status: 'new' as const,
+      body: String(f.message ?? f.body ?? f.summary ?? ''),
+      path: String(f.path ?? f.file ?? f.new_path ?? ''),
+      line: typeof f.line === 'number' ? f.line : undefined,
+    }))
+    .filter((f) => f.body)
+}
+
 export async function runOnce(cfg: RunnerConfig, deps: {
   fetcher?: typeof fetch; postComment?: (body:string)=>Promise<void>;
   postFindings?: typeof postReviewFindings;
@@ -128,8 +141,15 @@ export async function runOnce(cfg: RunnerConfig, deps: {
   const raw = deps.createAgent
     ? await deps.createAgent(cfg, changes)
     : { findings: [], summary: `Diff-only review for !${cfg.mrIid}: ${changes.changes.length} file(s)` }
-  // Normalize: brief test mock returns {summary, failures} without findings — tolerate both shapes
-  const agentResult = { summary: (raw as any).summary ?? '', findings: (raw as any).findings ?? [] }
+  // Normalize: tolerate either {summary, findings} or a full mock shape.
+  const agentResult = { summary: (raw as any).summary ?? '', findings: normalizeFindings((raw as any).findings ?? []) }
+  // Augment summary with per-finding detail so the posted comment shows the
+  // actual review content (file:line + message), not just a count.
+  const findingsSection = agentResult.findings.length > 0
+    ? '\n\n**Findings (' + agentResult.findings.length + '):**\n' +
+      agentResult.findings.map((f) => `- **\`${f.path}${f.line ? ':' + f.line : ''}\`** — ${f.body}`).join('\n')
+    : ''
+  const fullSummary = (agentResult.summary + findingsSection).trim()
   const failures: string[] = []
   const doPostFindings = deps.postFindings ?? postReviewFindings
   if (!cfg.dryRun && agentResult.findings.length > 0) {
@@ -137,8 +157,12 @@ export async function runOnce(cfg: RunnerConfig, deps: {
       await doPostFindings(agentResult.findings, { baseUrl: cfg.gitlabBaseUrl, token: cfg.gitlabToken, projectId: cfg.sourceProjectId, mrIid: cfg.mrIid, fetcher } as any)
     } catch (e) { failures.push(String(e)) }
   }
-  const comment = buildReviewComment({ projectPath: `project/${cfg.sourceProjectId}`, mrIid: cfg.mrIid, gitlabBaseUrl: cfg.gitlabBaseUrl, mode: cfg.mode, summary: agentResult.summary, failures, durationMs: Date.now() - t0, isDiffOnly: true })
+  const comment = buildReviewComment({
+    projectPath: `project/${cfg.sourceProjectId}`, mrIid: cfg.mrIid, gitlabBaseUrl: cfg.gitlabBaseUrl,
+    mode: cfg.mode, summary: fullSummary, findings: { newCount: agentResult.findings.length, replyCount: 0 },
+    failures, durationMs: Date.now() - t0, isDiffOnly: true,
+  })
   if (!cfg.dryRun && deps.postComment) await deps.postComment(comment).catch(e => failures.push(String(e)))
   const headSha = (detail as any).headSha ?? (detail as any).sha ?? 'unknown'
-  return { summary: agentResult.summary, failures, durationMs: Date.now() - t0, headSha }
+  return { summary: fullSummary, failures, durationMs: Date.now() - t0, headSha }
 }
