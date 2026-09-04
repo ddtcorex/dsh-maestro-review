@@ -58,13 +58,24 @@ describe('parseCiEnvConfig', () => {
 })
 
 describe('fetchMrDetail', () => {
-  it('returns sourceBranch and headSha from the MR detail endpoint', async () => {
+  it('returns sourceBranch, headSha and projectPath from references.full', async () => {
+    const { fetchMrDetail } = await import('../src/host/providers/ci-trigger.js')
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+      source_branch: 'feat/x', sha: 'abc123', references: { full: 'g/sub/proj!2' },
+    }), { status: 200 }))
+    await expect(fetchMrDetail(
+      parseCiEnvConfig({ GITLAB_HOST: 'h', MAESTRO_GITLAB_TOKEN: 'tok', SOURCE_PROJECT_ID: '1', MR_IID: '2' }),
+      fetcher as unknown as typeof fetch,
+    )).resolves.toEqual({ sourceBranch: 'feat/x', headSha: 'abc123', projectPath: 'g/sub/proj' })
+  })
+
+  it('falls back to project/<id> when references is absent', async () => {
     const { fetchMrDetail } = await import('../src/host/providers/ci-trigger.js')
     const fetcher = vi.fn(async () => new Response(JSON.stringify({ source_branch: 'feat/x', sha: 'abc123' }), { status: 200 }))
     await expect(fetchMrDetail(
       parseCiEnvConfig({ GITLAB_HOST: 'h', MAESTRO_GITLAB_TOKEN: 'tok', SOURCE_PROJECT_ID: '1', MR_IID: '2' }),
       fetcher as unknown as typeof fetch,
-    )).resolves.toEqual({ sourceBranch: 'feat/x', headSha: 'abc123' })
+    )).resolves.toEqual({ sourceBranch: 'feat/x', headSha: 'abc123', projectPath: 'project/1' })
   })
 
   it('uses JOB-TOKEN header when GITLAB_TOKEN_KIND=job', async () => {
@@ -198,14 +209,16 @@ describe('fetchMrSourceBranch', () => {
 describe('runCiTrigger', () => {
   it('builds a ReviewRequest with trigger "mention" and calls ctx.reviewRunner, then writes report files', async () => {
     const cfg = parseCiEnvConfig({ GITLAB_HOST: 'h', MAESTRO_GITLAB_TOKEN: 'tok', SOURCE_PROJECT_ID: '1', MR_IID: '2' })
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({ source_branch: 'feat/x', sha: 'abc123' }), { status: 200 }))
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+      source_branch: 'feat/x', sha: 'abc123', references: { full: 'g/sub/proj!2' },
+    }), { status: 200 }))
     let capturedRequest: unknown
     const fakeCtx = { reviewRunner: vi.fn(async (req: unknown) => { capturedRequest = req; return { ok: true, summary: 'done', failures: [], durationMs: 5 } }) }
     const writes: Array<[string, string]> = []
     const fakeWriteFile = (async (path: string, data: string) => { writes.push([path, data]) }) as unknown as typeof import('node:fs/promises').writeFile
     const result = await runCiTrigger(fakeCtx as any, cfg, { fetcher: fetcher as unknown as typeof fetch, writeFile: fakeWriteFile })
     expect(capturedRequest).toEqual({
-      projectPath: 'project/1', projectId: 1, mrIid: 2, sourceBranch: 'feat/x', headSha: 'abc123',
+      projectPath: 'g/sub/proj', projectId: 1, mrIid: 2, sourceBranch: 'feat/x', headSha: 'abc123',
       trigger: 'mention', mode: 'quick', scope: { kind: 'mr' },
     })
     expect(result.ok).toBe(true)

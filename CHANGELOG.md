@@ -15,6 +15,9 @@ All notable changes to this project are documented in this file. Format follows
   each other; history read-modify-write serialized and prune never drops a
   running entry. A deduped decline no longer records a bogus completion.
   (Ported from #73 onto the v0.5.0 flow.)
+- CI review comments use the real project path (`references.full` from the MR
+  detail call) in the header and View-MR link instead of `project/<id>`,
+  falling back to the synthetic form on old servers.
 
 ## [0.5.0] - 2026-09-04
 
