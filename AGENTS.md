@@ -12,19 +12,28 @@ Part of the Maestro Harness suite. Host half + client half (review settings/slot
 
 ## Layout
 
-- `src/providers/interface.ts` — the `ReviewProvider` contract (pluggable).
-- `src/providers/gitlab.ts` — GitLab provider implementation.
-- `src/providers/github.stub.ts` — GitHub provider stub (implement per contract when needed).
-- `src/orchestrator.ts` — the review pipeline orchestration.
-- `src/gitlab-webhook.ts` — GitLab webhook intake (row `maestro-review-webhook`).
-- `src/review-intake.ts` / `src/review-findings-tool.ts` / `src/review-history.ts` / `src/review-signals.ts` — intake, findings tool, history, signals.
-- `src/settings-rpc.ts` — settings RPC (row `maestro-review-settings-rpc`).
-- `src/config-store.ts` / `src/pin-store.ts` / `src/secure-compare.ts` — config + PIN auth (constant-time).
-- `src/govard-tool.ts` / `src/workspace-tool.ts` — govard + workspace tooling.
-- `src/notify.ts` / `src/skills-tool.ts` — notifier texts + contract slice (delivery via the optional
+Host code lives in `src/host/` (flat `rootDir`, emits `lib/index.js`):
+
+- `providers/interface.ts` — the `ReviewProvider` contract (pluggable).
+- `providers/gitlab.ts` — GitLab provider implementation.
+- `providers/github.stub.ts` — GitHub provider stub (implement per contract when needed).
+- `providers/ci-trigger.ts` — CI entry: builds the `ReviewRequest` from env, push-gate, coexistence yield.
+- `orchestrator.ts` — the review pipeline orchestration (`runReview`, comment builders, CI-deep clone branch).
+- `review-intake.ts` — webhook routing (`@bot` mention → quick, `/maestro deep` → deep).
+- `review-marker.ts` / `ci-coexist.ts` / `ci-clone.ts` — comment marker, yield checks, CI source clone.
+- `review-findings-tool.ts` / `review-history.ts` / `review-signals.ts` — intake, findings tool, history, signals.
+- `gitlab-auth.ts` — header selection (`PRIVATE-TOKEN` vs `JOB-TOKEN` via `GITLAB_TOKEN_KIND`).
+- `settings-rpc.ts` — settings RPC (row `maestro-review-settings-rpc`).
+- `config-store.ts` / `pin-store.ts` / `secure-compare.ts` — config + PIN auth (constant-time).
+- `govard-tool.ts` / `workspace-tool.ts` — govard + workspace tooling.
+- `notify.ts` / `skills-tool.ts` — notifier texts + contract slice (delivery via the optional
   `maestroNotifier` service from `@ddtcorex/dsh-maestro-notifier`) and skills helpers.
-- `src/events.ts` — typed event contract; `src/index.ts` — host `apply()`.
-- `tests/{orchestrator,provider,notify-texts}.test.ts` — vitest suites.
+- `events.ts` — typed event contract; `index.ts` — host `apply()`.
+- `profiles/reviewer-ci/` — headless DSH profile for the CI image (settings-rpc disabled: no web connection in CI).
+- `docker/` — reviewer image (`Dockerfile`, `entrypoint.sh`, `ci-settings.*.yaml` model variants).
+- `templates/` — `reviewer-project.gitlab-ci.yml` (secrets holder) + `source-project.gitlab-ci.yml` (bridge).
+- `docs/ci-reviewer-setup.md` — setup + per-case trigger workflows (quick/deep × CI/webhook).
+- `tests/` — vitest suites (`pnpm test`).
 
 ## Development
 
@@ -45,7 +54,8 @@ pnpm build    # tsc  -> lib/
 
 - **ReviewProvider is pluggable** — all provider-specific behavior goes behind `providers/interface.ts`. Add a new forge by implementing the interface, never by branching `if gitlab / if github` in the orchestrator.
 - **Tool-only review subagents** — review/audit subagents run with tool-only presets; findings are written via `review-findings` tool, not free text.
-- **Secrets** — compare PINs/tokens with `secure-compare.ts`; never log or commit real tokens.
+- **Secrets** — compare PINs/tokens with `secure-compare.ts`; never log or commit real tokens. In CI, `MAESTRO_GITLAB_TOKEN` must be a PAT/group token (`api` scope) — `CI_JOB_TOKEN` is read-only for posting (probed on GitLab 18.11); redact it from clone URLs and errors.
+- **CI flow** — `providers/ci-trigger.ts` owns the push-gate + coexistence yield; the orchestrator's CI-deep branch clones and reuses `runReviewAndAudit` with a plain worktree (no vendor/govard linking) and a static-only auditor prompt. Webhook behavior stays untouched: CI yields, never the reverse.
 - Keep host (network/webhook/orchestration) and client (settings UI) split; RPC is loopback authority.
 
 ## Validation

@@ -22,6 +22,18 @@ Part of the Maestro Harness suite (`dsh-maestro-*`). Cordis patch rows:
 - **Client half** — settings section rendered into DSH Web slots; notification copy stays
   here, delivery goes through the optional `maestroNotifier` service.
 
+## CI reviewer (no local checkout)
+
+The same pipeline also runs headless from GitLab CI: a shared reviewer
+project (holds secrets + image) serves any number of source projects through
+a small bridge job — no DSH host, no project mapping needed. Quick runs
+diff-only; on-demand deep clones the MR head and reviews reviewer-only with
+a static-only audit (no govard runtime in the container).
+
+Full setup, per-case trigger workflows (quick/deep × CI/webhook), model
+selection, and troubleshooting: [`docs/ci-reviewer-setup.md`](docs/ci-reviewer-setup.md).
+Templates live in `templates/`, the image in `docker/`.
+
 ## Settings
 
 Reads its configuration through the **shared namespaced settings store**
