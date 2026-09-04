@@ -27,11 +27,12 @@ project). Image: `docker/Dockerfile` → published as
      project allowlists the reviewer. The run would "complete" without ever
      posting. Prefer a bot/group token where the instance allows creating
      one (a human PAT needs yearly rotation).
-   - `OPENCODE_GO_API_KEY` **or** `DEEPSEEK_API_KEY` **or** `REVIEW_LLM_BASE_URL`
-     + `REVIEW_LLM_MODEL` + `REVIEW_LLM_API_KEY` — model route selection,
-     see [section 5](#5-model-selection). The `REVIEW_LLM_*` route works with
-     any OpenAI-compatible endpoint, so a deployment is never locked to
-     opencode.ai.
+   - `DEEPSEEK_API_KEY` (**required** unless using the route below) — the
+     sole baked default, serves `deepseek-official` straight from
+     `api.deepseek.com`. **Or** set `REVIEW_LLM_API_KEY` + `REVIEW_LLM_BASE_URL`
+     + `REVIEW_LLM_MODEL` instead to point the reviewer at any
+     OpenAI-compatible endpoint (self-hosted, Azure OpenAI, OpenRouter, a
+     private gateway, ...) — see [section 5](#5-model-selection).
    - `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` (optional) — review digest.
 4. The reviewer job needs **no source checkout** (`GIT_STRATEGY: none`); it
    boots `dsh --profile reviewer-ci` inside the image.
@@ -151,19 +152,18 @@ No settings mount required — everything is env-driven:
 
 | Keys set | Route |
 |---|---|
-| `REVIEW_LLM_BASE_URL` set | **bring-your-own OpenAI-compatible endpoint** (highest priority — wins even if opencode/deepseek keys are also present) |
-| `OPENCODE_GO_API_KEY` alone (or with `DEEPSEEK_API_KEY`) | opencode profile (default; serves `opencode-go` **and** `deepseek-official-via-zen`) |
-| `DEEPSEEK_API_KEY` only | deepseek profile (`deepseek-official` straight from `api.deepseek.com` — needs a live key) |
+| `REVIEW_LLM_API_KEY` set | **bring-your-own OpenAI-compatible endpoint** (overlays the default) |
+| Nothing above set | deepseek (sole baked default; `deepseek-official` straight from `api.deepseek.com` — needs `DEEPSEEK_API_KEY` at call time) |
 
-- `OPENCODE_MODEL` (single variable, default `muse-spark-1.3-contributor`).
 - **Bring-your-own OpenAI-compatible endpoint** (self-hosted, Azure OpenAI,
   OpenRouter, a private gateway, ...) — set:
-  - `REVIEW_LLM_BASE_URL` (**required** to select this route) — e.g.
-    `https://my-gateway.example.com/v1`.
-  - `REVIEW_LLM_MODEL` (**required** once `REVIEW_LLM_BASE_URL` is set; the
+  - `REVIEW_LLM_API_KEY` (**required** to select this route, Protected +
+    Masked) — the endpoint's API key; never touches the shell, resolved by
+    `dsh` at call time.
+  - `REVIEW_LLM_BASE_URL` (**required** once `REVIEW_LLM_API_KEY` is set; the
+    job fails closed otherwise) — e.g. `https://my-gateway.example.com/v1`.
+  - `REVIEW_LLM_MODEL` (**required** once `REVIEW_LLM_API_KEY` is set; the
     job fails closed otherwise) — the model id as the endpoint expects it.
-  - `REVIEW_LLM_API_KEY` (**required**, Protected + Masked) — the endpoint's
-    API key; never touches the shell, resolved by `dsh` at call time.
   - `REVIEW_LLM_API` (optional, default `openai-completions`) — the wire
     protocol: `openai-completions` or `openai-responses`. Any other value
     fails closed (only OpenAI-compatible protocols are supported).
