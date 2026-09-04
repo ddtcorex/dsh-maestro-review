@@ -1,8 +1,8 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { buildIncrementalBlock, type CompareResult } from '../src/host/incremental.js'
+import { buildIncrementalBlock, fetchCompare, fetchMrDetailHeadSha, type CompareResult } from '../src/host/incremental.js'
 import { recordReviewStart, recordReviewFinish, lastCompletedReview } from '../src/host/review-history.js'
 
 const cleanup: string[] = []
@@ -80,5 +80,42 @@ describe('lastCompletedReview', () => {
   it('returns undefined when no completed review exists for this MR', async () => {
     const home = await tempHome()
     expect(await lastCompletedReview(7, 9, home)).toBeUndefined()
+  })
+})
+
+describe('D1 pre-agent fetch timeout', () => {
+  const realFetch = globalThis.fetch
+  afterEach(() => {
+    globalThis.fetch = realFetch
+    vi.useRealTimers()
+  })
+
+  /** Hanging stub that honors abort, like real fetch: rejects with AbortError. */
+  function hangUntilAborted(): void {
+    // @ts-expect-error minimal stub: hangs until aborted, then rejects like real fetch
+    globalThis.fetch = vi.fn(
+      (_url: string, init?: { signal?: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () =>
+            reject(new DOMException('This operation was aborted', 'AbortError')),
+          )
+        }),
+    )
+  }
+
+  it('fetchMrDetailHeadSha degrades to undefined when the API hangs', async () => {
+    vi.useFakeTimers()
+    hangUntilAborted()
+    const pending = fetchMrDetailHeadSha('https://git.example.com', 'tok', 1345, 30)
+    await vi.advanceTimersByTimeAsync(15_000)
+    await expect(pending).resolves.toBeUndefined()
+  })
+
+  it('fetchCompare degrades to undefined when the API hangs', async () => {
+    vi.useFakeTimers()
+    hangUntilAborted()
+    const pending = fetchCompare('https://git.example.com', 'tok', 1345, 'aaa', 'bbb')
+    await vi.advanceTimersByTimeAsync(15_000)
+    await expect(pending).resolves.toBeUndefined()
   })
 })
