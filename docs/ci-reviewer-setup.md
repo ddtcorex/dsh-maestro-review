@@ -49,10 +49,16 @@ project). Image: `docker/Dockerfile` → published as
 ### Case A — Quick review, automatic (default)
 
 The bridge fires on every MR pipeline (`merge_request_event`). The reviewer
-runs `quick` (diff-only unless the project is mapped — unmapped never applies
-here since the CI profile has no mappings) and posts
-`## 🤖 Maestro Review`. Artifacts `review-report.json` / `review-report.md`
-are always uploaded (even on skip/failure).
+runs `quick` — diff-only by default (unmapped never applies here since the CI
+profile has no mappings). With `REVIEW_PROFILE` set to a non-generic profile
+(e.g. `magento2`), quick instead clones the source at the head SHA and runs
+the profile's reviewer on the checkout, reviewer-only (no auditor — same
+static, no-runtime constraint as Case B's auditor, just without the audit
+section). The comment header then carries the profile
+(`` `quick` · `magento2` ``). `REVIEW_PROFILE: "generic"` (or unset) keeps the
+cheap diff-only path. Posts `## 🤖 Maestro Review`. Artifacts
+`review-report.json` / `review-report.md` are always uploaded (even on
+skip/failure).
 
 No per-MR action needed. Same head SHA never reviews twice
 ([push-gate](#4-push-gate--re-review)).
