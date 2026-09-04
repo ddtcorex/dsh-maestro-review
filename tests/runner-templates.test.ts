@@ -33,6 +33,10 @@ describe('templates', () => {
     expect(yml).toMatch(/REVIEW_ON_PUSH/)
     expect(yml).toMatch(/cache:\s*\n\s*key: maestro-review-history/m)
     expect(yml).toMatch(/\.maestro-history\//)
+    // Deep-in-CI recipe: manual run with REVIEW_MODE=deep; the stale
+    // "deep stays declined" note must be gone (deep now clones in CI).
+    expect(yml).toMatch(/REVIEW_MODE.*deep/s)
+    expect(yml).not.toMatch(/stays declined/)
   })
 
   it('source template uses trigger: project and no secrets', () => {

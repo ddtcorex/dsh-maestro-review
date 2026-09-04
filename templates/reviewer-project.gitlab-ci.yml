@@ -62,7 +62,14 @@ review:
   #   The reviewer must load the full skill set or the review fails closed
   #   (no half-skilled review). Runtime-backed checks still degrade without a
   #   checkout — the profile adds framework checklists, not a govard run.
-  #   deep + unmapped stays declined regardless of profile (no checkout in CI).
+  # Review mode (default quick; deep runs on demand — no new variables):
+  # REVIEW_MODE: "deep"                              # manual downstream run with the same
+  #   bridge variables (SOURCE_PROJECT_ID, MR_IID, GITLAB_HOST) + REVIEW_ON_PUSH=1
+  #   to re-review pushes. The job clones the source at the MR head SHA with
+  #   MAESTRO_GITLAB_TOKEN (api scope, oauth2) and runs reviewer (+auditor
+  #   degraded to reviewer-only without a runtime). No govard in the container.
+  #   CI yields to webhook: if the head SHA already has a completed review
+  #   comment (either flow), the run skips instead of double-posting.
   # Re-review pushes (optional — mirrors Settings UI autoRereviewOnPush, default off):
   # REVIEW_ON_PUSH: "1"                              # re-review new pushes with incremental context;
   #   unset = only the first (opened) review runs; same head SHA always skips.

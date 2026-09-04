@@ -20,6 +20,8 @@ describe('docker', () => {
     expect(df).toMatch(/ci-settings\.deepseek\.yaml \/app\/settings\.deepseek\.yaml/)
     expect(df).toMatch(/tini/)
     expect(df).toMatch(/ENTRYPOINT.*entrypoint\.sh/)
+    // CI deep reviews clone the source at the MR head SHA — git must exist in the image.
+    expect(df).toMatch(/apt-get install[^&]*\bgit\b/)
   })
 
   it('entrypoint.sh validates required env then execs dsh --profile reviewer-ci with no task text', () => {

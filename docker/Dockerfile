@@ -60,7 +60,7 @@ RUN pnpm --dir profiles/reviewer-ci install --frozen-lockfile
 
 # ---- runtime ----
 FROM node:${NODE_VERSION}-slim AS runtime
-RUN apt-get update && apt-get install -y --no-install-recommends tini ca-certificates \
+RUN apt-get update && apt-get install -y --no-install-recommends tini ca-certificates git \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder /build/deepseek-harness ./deepseek-harness
