@@ -31,7 +31,7 @@ import * as PerfLogStatsTool from './perf-log-stats-tool.js'
 import * as ReviewToolPolicy from './tool-policy.js'
 import type { ReviewFinding, FindingSeverity } from './review-findings-tool.js'
 import type { ReviewRequest } from './events.js'
-import { loadUserConfig, type MaestroUserConfig, type ReviewModelSelection } from './config-store.js'
+import { loadUserConfig, type MaestroUserConfig, type ProjectMapping, type ReviewModelSelection } from './config-store.js'
 import { hasCompletedReview, lastCompletedReview, pruneHistory, recordReviewFinish, recordReviewStart } from './review-history.js'
 import { buildIncrementalBlock, fetchCompare, fetchMrDetailHeadSha } from './incremental.js'
 import { createReviewSignals } from './review-signals.js'
@@ -243,6 +243,17 @@ export function resolveReviewModel(
     provider: raw.provider,
     model: raw.model,
     ...(raw.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(raw.reasoningEffort) }),
+  }
+}
+
+/** Effective auto-trigger flags: per-project row overrides global, unset inherits (design §4). */
+export function resolveReviewTriggers(
+  userConfig: MaestroUserConfig,
+  mapping?: ProjectMapping,
+): { onPush: boolean; onAssign: boolean } {
+  return {
+    onPush: mapping?.rereviewOnPush ?? userConfig.autoRereviewOnPush ?? false,
+    onAssign: mapping?.reviewOnAssign ?? userConfig.autoReviewOnAssign ?? true,
   }
 }
 
