@@ -38,13 +38,16 @@ RUN pnpm --dir profiles/reviewer-ci --config.minimumReleaseAge=0 install --froze
 COPY presets/maestro-reviewer ./.agent-presets/dsh-maestro-reviewer
 COPY presets/maestro-auditor ./.agent-presets/dsh-maestro-auditor
 # Host LLM-config mirror for model serving — dsh registers LLM adapters from
-# DSH_HOME settings, which is empty in a fresh container. Two variants
-# (key-based selection in entrypoint.sh): ci-settings.opencode.yaml (default,
-# host mirror) and ci-settings.deepseek.yaml (api.deepseek.com straight).
-# Holds no secrets (each key resolves from its apiKeyEnv var at call time).
-# A job-mounted /app/settings.yaml overrides both.
+# DSH_HOME settings, which is empty in a fresh container. Three variants
+# (selection in entrypoint.sh): ci-settings.opencode.yaml (default, host
+# mirror), ci-settings.deepseek.yaml (api.deepseek.com straight), and
+# ci-settings.generic-openai.yaml (bring-your-own OpenAI-compatible endpoint,
+# REVIEW_LLM_BASE_URL-gated, highest priority). Holds no secrets (each key
+# resolves from its apiKeyEnv var at call time). A job-mounted
+# /app/settings.yaml overrides all three.
 COPY docker/ci-settings.opencode.yaml /app/settings.yaml
 COPY docker/ci-settings.deepseek.yaml /app/settings.deepseek.yaml
+COPY docker/ci-settings.generic-openai.yaml /app/settings.generic-openai.yaml
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

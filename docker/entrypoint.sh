@@ -16,12 +16,45 @@ export REVIEW_REPORT_DIR="$PWD"
 # dir — without this, reports/history land inside the container and the
 # artifacts/cache steps find nothing (proven 2026-09-04 live). Local `docker
 # run -w` sets PWD already, so this only fires in real CI.
-# Key-based route selection (only for our baked template — the __CI_MANAGED__
-# marker; a job-mounted settings.yaml passes through untouched): opencode is the
-# default (host mirror) unless only a deepseek key is present. An explicit
-# REVIEW_MODEL_PROVIDER pin wins over this default elsewhere (row-config).
+# Route selection (only for our baked template — the __CI_MANAGED__ marker; a
+# job-mounted settings.yaml passes through untouched):
+# 1. REVIEW_LLM_BASE_URL, if set, always wins — an explicit bring-your-own
+#    OpenAI-compatible endpoint, so a deployment is never locked to opencode.ai.
+# 2. Otherwise opencode is the default (host mirror) unless only a deepseek
+#    key is present. An explicit REVIEW_MODEL_PROVIDER pin wins over this
+#    default elsewhere (row-config).
 if grep -q __CI_MANAGED__ /app/settings.yaml 2>/dev/null; then
-  if [ -z "${OPENCODE_GO_API_KEY:-}" ] && [ -n "${DEEPSEEK_API_KEY:-}" ]; then
+  if [ -n "${REVIEW_LLM_BASE_URL:-}" ]; then
+    if [ -z "${REVIEW_LLM_MODEL:-}" ]; then
+      echo "[review] REVIEW_LLM_MODEL is required when REVIEW_LLM_BASE_URL is set" >&2
+      exit 1
+    fi
+    REVIEW_LLM_API="${REVIEW_LLM_API:-openai-completions}"
+    case "$REVIEW_LLM_API" in
+      openai-completions|openai-responses) ;;
+      *)
+        echo "[review] invalid REVIEW_LLM_API (allowed: openai-completions, openai-responses)" >&2
+        exit 1
+        ;;
+    esac
+    # Charset guards keep the sed substitutions below injection-free.
+    case "$REVIEW_LLM_BASE_URL" in
+      *[!A-Za-z0-9:/_.+-]*)
+        echo "[review] invalid REVIEW_LLM_BASE_URL (allowed: A-Za-z0-9:/_.+-)" >&2
+        exit 1
+        ;;
+    esac
+    case "$REVIEW_LLM_MODEL" in
+      *[!A-Za-z0-9/_+.-]*)
+        echo "[review] invalid REVIEW_LLM_MODEL (allowed: A-Za-z0-9/_+.-)" >&2
+        exit 1
+        ;;
+    esac
+    sed -e "s#__REVIEW_LLM_API__#${REVIEW_LLM_API}#g" \
+        -e "s#__REVIEW_LLM_BASE_URL__#${REVIEW_LLM_BASE_URL}#g" \
+        -e "s#__REVIEW_LLM_MODEL__#${REVIEW_LLM_MODEL}#g" \
+        /app/settings.generic-openai.yaml > /app/settings.yaml
+  elif [ -z "${OPENCODE_GO_API_KEY:-}" ] && [ -n "${DEEPSEEK_API_KEY:-}" ]; then
     cp /app/settings.deepseek.yaml /app/settings.yaml
   fi
 fi

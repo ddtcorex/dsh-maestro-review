@@ -19,6 +19,7 @@ describe('docker', () => {
     expect(df).toMatch(/\.agent-presets\/dsh-maestro-auditor/)
     expect(df).toMatch(/ci-settings\.opencode\.yaml \/app\/settings\.yaml/)
     expect(df).toMatch(/ci-settings\.deepseek\.yaml \/app\/settings\.deepseek\.yaml/)
+    expect(df).toMatch(/ci-settings\.generic-openai\.yaml \/app\/settings\.generic-openai\.yaml/)
     expect(df).toMatch(/tini/)
     expect(df).toMatch(/ENTRYPOINT.*entrypoint\.sh/)
     // CI deep reviews clone the source at the MR head SHA — git must exist in the image.
@@ -43,6 +44,42 @@ describe('docker', () => {
     expect(sh).toMatch(/DEEPSEEK_API_KEY/)
     expect(sh).toMatch(/\.maestro-history/)
     expect(sh).toMatch(/dsh-maestro-review/)
+  })
+
+  it('entrypoint.sh selects the generic OpenAI-compatible route when REVIEW_LLM_BASE_URL is set, ahead of opencode/deepseek', () => {
+    const sh = readFileSync('docker/entrypoint.sh', 'utf-8')
+    expect(sh).toMatch(/REVIEW_LLM_BASE_URL/)
+    expect(sh).toMatch(/REVIEW_LLM_MODEL/)
+    expect(sh).toMatch(/REVIEW_LLM_API/)
+    expect(sh).toMatch(/settings\.generic-openai\.yaml/)
+    // route selection keys on REVIEW_LLM_BASE_URL, not the secret itself — the
+    // key stays inside settings.generic-openai.yaml, resolved by dsh at call time
+    expect(sh).not.toMatch(/REVIEW_LLM_API_KEY/)
+    // fails closed when the base URL is set but the model is missing
+    expect(sh).toMatch(/REVIEW_LLM_MODEL.*(is|must be) (required|set)/)
+    // only openai-completions/openai-responses are accepted (OpenAI-compatible only)
+    expect(sh).toMatch(/openai-completions/)
+    expect(sh).toMatch(/openai-responses/)
+    // the generic route check must appear before the opencode/deepseek key check
+    const genericIdx = sh.indexOf('REVIEW_LLM_BASE_URL')
+    const deepseekIdx = sh.indexOf('DEEPSEEK_API_KEY')
+    expect(genericIdx).toBeGreaterThan(-1)
+    expect(deepseekIdx).toBeGreaterThan(-1)
+    expect(genericIdx).toBeLessThan(deepseekIdx)
+  })
+
+  it('ci-settings.generic-openai.yaml declares a bring-your-own OpenAI-compatible route with no embedded secrets', () => {
+    const yml = readFileSync('docker/ci-settings.generic-openai.yaml', 'utf-8')
+    expect(yml).toMatch(/^llm-pi-ai:/m)
+    expect(yml).toMatch(/custom-openai:/)
+    expect(yml).toMatch(/apiKeyEnv:\s*REVIEW_LLM_API_KEY/)
+    expect(yml).toMatch(/api:\s*__REVIEW_LLM_API__/)
+    expect(yml).toMatch(/baseURL:\s*__REVIEW_LLM_BASE_URL__/)
+    expect(yml.match(/^\s+(?:- id|model): __REVIEW_LLM_MODEL__$/gm)).toHaveLength(2)
+    expect(yml).toMatch(/^agent-default-model:/m)
+    expect(yml).toMatch(/provider:\s*custom-openai/)
+    expect(yml).not.toMatch(/sk-[A-Za-z0-9]{8,}/)
+    expect(yml).not.toMatch(/glpat-[A-Za-z0-9_.-]{8,}/)
   })
 
   it('ci-settings.opencode.yaml mirrors the host LLM config with no embedded secrets', () => {
