@@ -4,6 +4,32 @@ All notable changes to this project are documented in this file. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-09-04
+
+### Changed
+
+- **Removed OpenCode Go entirely.** The reviewer image no longer bakes an
+  opencode-based default: `DEEPSEEK_API_KEY` is now the sole baked default
+  (`deepseek-official` straight from `api.deepseek.com`), and setting
+  `REVIEW_LLM_API_KEY` overlays a bring-your-own OpenAI-compatible endpoint
+  (`REVIEW_LLM_BASE_URL` + `REVIEW_LLM_MODEL`, optional `REVIEW_LLM_API`)
+  instead. `OPENCODE_GO_API_KEY`/`OPENCODE_MODEL` and
+  `docker/ci-settings.opencode.yaml` are gone. (#82)
+
+### Fixed
+
+- Surface the real turn error (auth/billing/rate-limit) instead of a
+  misleading "did not successfully load the required skill profile" message
+  in the reviewer, and a silent clean-looking empty report in the auditor —
+  both previously masked a provider-level failure as a maestro-skills
+  installation problem. (#81)
+- Bump harness devDependencies (`dsh-agent`, `dsh-agent-presets`, `dsh-llm`,
+  etc.) from `0.1.2-alpha.2` to `0.1.2-rc.1` to match the version actually
+  running on deployed hosts, pinning `dsh-attachment` explicitly to avoid an
+  incompatible transitive resolution. (#80)
+- Pin the public template's `REVIEWER_IMAGE` to `:0.1.0` instead of
+  `:latest`. (#79)
+
 ## [0.5.1] - 2026-09-04
 
 ### Fixed
