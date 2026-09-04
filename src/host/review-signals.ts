@@ -4,13 +4,15 @@
  * GitLab error is swallowed so it can never fail the review itself.
  */
 
+import { fetchWithTimeout } from './gitlab-client.js'
+
 export interface ReviewSignals {
   start(): Promise<void>
   finish(outcome: 'completed' | 'failed'): Promise<void>
 }
 
 async function award(baseUrl: string, token: string, projectId: number, mrIid: number, name: string): Promise<void> {
-  await fetch(`${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mrIid}/award_emoji`, {
+  await fetchWithTimeout(`${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mrIid}/award_emoji`, {
     method: 'POST',
     headers: { 'PRIVATE-TOKEN': token, 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
@@ -19,14 +21,14 @@ async function award(baseUrl: string, token: string, projectId: number, mrIid: n
 
 /** Remove only this bot's stale running markers; other users' awards stay untouched. */
 async function unawardOwn(baseUrl: string, token: string, projectId: number, mrIid: number, botUsername: string): Promise<void> {
-  const response = await fetch(`${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mrIid}/award_emoji`, {
+  const response = await fetchWithTimeout(`${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mrIid}/award_emoji`, {
     headers: { 'PRIVATE-TOKEN': token },
   })
   if (!response.ok) return
   const awards = (await response.json()) as Array<{ id?: number; name?: string; user?: { username?: string } }>
   for (const awardItem of Array.isArray(awards) ? awards : []) {
     if (awardItem.name !== 'eyes' || awardItem.user?.username !== botUsername || typeof awardItem.id !== 'number') continue
-    await fetch(`${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mrIid}/award_emoji/${awardItem.id}`, {
+    await fetchWithTimeout(`${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mrIid}/award_emoji/${awardItem.id}`, {
       method: 'DELETE',
       headers: { 'PRIVATE-TOKEN': token },
     }).catch(() => {})

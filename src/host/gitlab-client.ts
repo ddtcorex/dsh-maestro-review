@@ -1,6 +1,8 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 
 export const name = 'maestro-gitlab-client'
 export const inject = ['tools']
@@ -27,6 +29,44 @@ interface GitlabDiff {
   diff: string
 }
 
+export interface DiffFileEntry {
+  path: string
+  bytes: number
+}
+
+/** Per-file inventory of the MR diff — small enough to return inline. Pure. */
+export function diffFileList(diffs: GitlabDiff[]): DiffFileEntry[] {
+  return diffs.map((d) => ({ path: d.new_path, bytes: Buffer.byteLength(d.diff, 'utf8') }))
+}
+
+/** Unified text for one file, or undefined when the path is not in the MR. Pure. */
+export function selectFileDiff(diffs: GitlabDiff[], path: string): string | undefined {
+  const d = diffs.find((x) => x.new_path === path || x.old_path === path)
+  if (d === undefined) return undefined
+  return `--- ${d.old_path}\n+++ ${d.new_path}\n${d.diff}`
+}
+
+/**
+ * `fetch` with a hard ceiling: aborts the request after `ms` (default 15s)
+ * and throws `GitLab API timeout after <ms>ms` on abort. The timer is always
+ * cleared on settle. Pre-agent lookups degrade the throw to `undefined` at
+ * their own call site; post-agent callers let it reach `writeFailedReport`.
+ */
+export async function fetchWithTimeout(
+  url: string, init: RequestInit | undefined, ms = 15_000,
+): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), ms)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } catch (err) {
+    if ((err as Error)?.name === 'AbortError') throw new Error(`GitLab API timeout after ${ms}ms`)
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 interface GitlabDiffRefs {
   base_sha: string
   start_sha: string
@@ -45,10 +85,74 @@ interface GitlabDiscussion {
   notes: GitlabDiscussionNote[]
 }
 
+interface OwnThread {
+  discussionId: string
+  path: string
+  line: number | null
+  lastCommentBody: string
+  resolved: boolean
+}
+
+/**
+ * Resolve the in-workspace spill path for the MR diff. The DSH runtime
+ * spills large tool outputs to /tmp/dsh-spill-*, which sits outside the
+ * agent's cwd — and Guard blocks the agent from reading it back
+ * ("path outside cwd", tickets g-dd0d1679/g-716cd436). Writing the diff
+ * inside the workspace root keeps it readable via maestro_read_file.
+ */
+export function resolveDiffSpillPath(workspaceRoot: string, mrIid: number): string {
+  return join(resolve(workspaceRoot), '.maestro', `mr-${mrIid}.diff`)
+}
+
+export function writeDiffSpill(workspaceRoot: string, mrIid: number, text: string): { path: string; bytes: number } {
+  const abs = resolveDiffSpillPath(workspaceRoot, mrIid)
+  mkdirSync(join(resolve(workspaceRoot), '.maestro'), { recursive: true })
+  writeFileSync(abs, text, 'utf-8')
+  return { path: join('.maestro', `mr-${mrIid}.diff`), bytes: Buffer.byteLength(text, 'utf8') }
+}
+
+interface SC{agent?:{session?:{header?:{cwd?:string}}}}
+function sessionCwd(e: unknown): string | undefined {
+  const cwd = (e as SC|undefined)?.agent?.session?.header?.cwd
+  return typeof cwd === 'string' && cwd !== '' ? cwd : undefined
+}
+
+/**
+ * Pick this bot's inline threads out of the MR discussions list, including
+ * resolved ones (flagged) so a same-SHA re-review can reply-update instead
+ * of posting duplicates. Pure for unit testing.
+ */
+export function selectOwnThreads(
+  discussions: GitlabDiscussion[],
+  botUsername: string,
+): { threads: OwnThread[]; totalDiscussions: number } {
+  const threads = discussions
+    .filter(d => d.notes.length > 0 && d.notes[0].author.username === botUsername && d.notes[0].position !== undefined)
+    .map(d => ({
+      discussionId: d.id,
+      path: d.notes[0].position!.new_path,
+      line: d.notes[0].position!.new_line,
+      lastCommentBody: d.notes[d.notes.length - 1].body,
+      resolved: d.notes[0].resolved === true,
+    }))
+  return { threads, totalDiscussions: discussions.length }
+}
+
 export function apply(ctx: Context, config: Config): void {
   const apiBase = `${config.baseUrl}/api/v4/projects/${config.projectId}/merge_requests/${config.mrIid}`
   const headers = { 'PRIVATE-TOKEN': config.token }
   let cachedDiffRefs: GitlabDiffRefs | undefined
+  let cachedDiffs: GitlabDiff[] | undefined
+
+  async function getDiffs(): Promise<GitlabDiff[]> {
+    if (cachedDiffs !== undefined) return cachedDiffs
+    const response = await fetch(`${apiBase}/diffs`, { headers })
+    if (!response.ok) {
+      throw new Error(`GitLab API error ${response.status}: ${await response.text()}`)
+    }
+    cachedDiffs = (await response.json()) as GitlabDiff[]
+    return cachedDiffs
+  }
 
   async function getDiffRefs(): Promise<GitlabDiffRefs> {
     if (cachedDiffRefs !== undefined) return cachedDiffRefs
@@ -62,20 +166,41 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.tools.register(defineTool({
     name: 'gitlab_get_mr_diff',
-    description: 'Fetch the current unified diff for this merge request.',
+    description: 'Fetch the current unified diff for this merge request. The full diff is written to path (inside your workspace, readable via maestro_read_file); bytes is its size and files lists per-file sizes. Prefer gitlab_get_file_diff per file you inspect — small inline results never spill. Do not look for anything under /tmp.',
     parameters: {},
     output: {
-      schema: { type: 'object', additionalProperties: false, properties: { text: { type: 'string', required: true } } },
+      schema: { type: 'object', additionalProperties: false, properties: { path: { type: 'string', required: true }, bytes: { type: 'number', required: true }, files: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { path: { type: 'string', required: true }, bytes: { type: 'number', required: true } } } } } },
+      render: (_args, value) => [{ type: 'text', text: `diff written to ${value.path} (${value.bytes} bytes, ${value.files.length} files)` }],
+    },
+    async execute(_args, exec) {
+      const diffs = await getDiffs()
+      const text = diffs.map(d => `--- ${d.old_path}\n+++ ${d.new_path}\n${d.diff}`).join('\n\n')
+      const cwd = sessionCwd(exec)
+      // No session cwd (should not happen for review agents): fall back to
+      // the legacy inline text, which the runtime may spill to /tmp.
+      if (cwd === undefined) return { path: '', bytes: Buffer.byteLength(text, 'utf8'), files: diffFileList(diffs) }
+      const spilled = writeDiffSpill(cwd, config.mrIid, text)
+      return { ...spilled, files: diffFileList(diffs) }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'gitlab_get_file_diff',
+    description: "Return one file's unified diff inline (small results never spill to /tmp). Use after gitlab_get_mr_diff to inspect files one by one.",
+    parameters: {
+      path: { type: 'string', required: true, description: 'New path of the file, as listed in files.' },
+    },
+    output: {
+      schema: { type: 'object', additionalProperties: false, properties: { path: { type: 'string', required: true }, text: { type: 'string', required: true } } },
       render: (_args, value) => [{ type: 'text', text: value.text }],
     },
-    async execute() {
-      const response = await fetch(`${apiBase}/diffs`, { headers })
-      if (!response.ok) {
-        throw new Error(`GitLab API error ${response.status}: ${await response.text()}`)
+    async execute(args) {
+      const diffs = await getDiffs()
+      const text = selectFileDiff(diffs, args.path)
+      if (text === undefined) {
+        throw new Error(`path not in this MR diff: ${args.path}`)
       }
-      const diffs = await response.json() as GitlabDiff[]
-      const text = diffs.map(d => `--- ${d.old_path}\n+++ ${d.new_path}\n${d.diff}`).join('\n\n')
-      return { text }
+      return { path: args.path, text }
     },
   }))
 
@@ -104,11 +229,34 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.tools.register(defineTool({
     name: 'gitlab_list_own_review_threads',
-    description: 'List this merge request\'s unresolved inline discussion threads previously created by this bot account, so you can reply instead of duplicating.',
+    description: 'List this merge request\'s inline discussion threads previously created by this bot account (both unresolved and resolved, flagged), so you can reply instead of duplicating. Returns {threads, totalDiscussions}.',
     parameters: {},
     output: {
-      schema: { type: 'object', additionalProperties: false, properties: { text: { type: 'string', required: true } } },
-      render: (_args, value) => [{ type: 'text', text: value.text }],
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          threads: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                discussionId: { type: 'string', required: true },
+                path: { type: 'string', required: true },
+                line: { type: 'number' },
+                lastCommentBody: { type: 'string', required: true },
+                resolved: { type: 'boolean', required: true },
+              },
+            },
+          },
+          totalDiscussions: { type: 'number', required: true },
+        },
+      },
+      render: (_args, value: { threads: OwnThread[]; totalDiscussions: number }) => [{
+        type: 'text',
+        text: `${value.totalDiscussions} discussion(s) on this MR, ${value.threads.length} own inline thread(s):\n${JSON.stringify(value.threads)}`,
+      }],
     },
     async execute() {
       const response = await fetch(`${apiBase}/discussions`, { headers })
@@ -116,10 +264,7 @@ export function apply(ctx: Context, config: Config): void {
         throw new Error(`GitLab API error ${response.status}: ${await response.text()}`)
       }
       const discussions = await response.json() as GitlabDiscussion[]
-      const ownThreads = discussions
-        .filter(d => d.notes.length > 0 && d.notes[0].author.username === config.botUsername && !d.notes[0].resolved && d.notes[0].position !== undefined)
-        .map(d => ({ discussionId: d.id, path: d.notes[0].position!.new_path, line: d.notes[0].position!.new_line, lastCommentBody: d.notes[d.notes.length - 1].body }))
-      return { text: JSON.stringify(ownThreads) }
+      return selectOwnThreads(discussions, config.botUsername)
     },
   }))
 

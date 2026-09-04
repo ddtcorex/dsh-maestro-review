@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { postReviewFindings, ensureWorktree } from '../src/host/orchestrator.js'
 
 describe('orchestrator', () => {
@@ -93,5 +93,55 @@ describe('ensureWorktree branch-not-found fallback', () => {
       // Fallback: ensure ensureWorktree still throws generic for non-branch errors
       expect(true).toBe(true)
     }
+  })
+})
+
+describe('D1 signals timeout', () => {
+  const realFetch = globalThis.fetch
+  afterEach(() => {
+    globalThis.fetch = realFetch
+    vi.useRealTimers()
+  })
+
+  it('signals.start() settles instead of hanging when the GitLab API hangs', async () => {
+    vi.useFakeTimers()
+    // Hanging stub honoring abort; current code passes no signal, so it hangs.
+    // @ts-expect-error minimal stub
+    globalThis.fetch = vi.fn(
+      (_url: string, init?: { signal?: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () =>
+            reject(new DOMException('This operation was aborted', 'AbortError')),
+          )
+        }),
+    )
+    const { createReviewSignals } = await import('../src/host/review-signals.js')
+    const signals = createReviewSignals({
+      baseUrl: 'https://git.example.com', token: 'tok', projectId: 1345, mrIid: 30, botUsername: 'maestro',
+    })
+    const pending = signals.start()
+    // Two bounded fetches (list + award) at 15s each: 60s covers both.
+    await vi.advanceTimersByTimeAsync(60_000)
+    await pending
+  }, 10_000)
+})
+
+describe('D4 in-flight key', () => {
+  const base = {
+    projectId: 1345, projectPath: 'app/onlylyon/visiterlyon', mrIid: 30,
+    sourceBranch: 'maestro/e2e-push-gate-mtm6b71c',
+    trigger: 'push' as const, mode: 'quick' as const, scope: { kind: 'mr' as const },
+  }
+  it('different shas do not share a key', async () => {
+    const { reviewKeyHash } = await import('../src/host/orchestrator.js')
+    expect(reviewKeyHash({ ...base, pushSha: '7cdbfe08' })).not.toBe(reviewKeyHash({ ...base, pushSha: 'bb9ef659' }))
+  })
+  it('same sha still dedupes', async () => {
+    const { reviewKeyHash } = await import('../src/host/orchestrator.js')
+    expect(reviewKeyHash({ ...base, pushSha: '7cdbfe08' })).toBe(reviewKeyHash({ ...base, pushSha: '7cdbfe08' }))
+  })
+  it('trigger separates push from assignment on the same MR', async () => {
+    const { reviewKeyHash } = await import('../src/host/orchestrator.js')
+    expect(reviewKeyHash({ ...base })).not.toBe(reviewKeyHash({ ...base, trigger: 'reviewer-assignment' }))
   })
 })

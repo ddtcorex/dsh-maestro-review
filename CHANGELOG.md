@@ -4,6 +4,48 @@ All notable changes to this project are documented in this file. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-09-04
+
+### Added
+
+- Natural-language deep-review trigger: "deep review" phrasing routes to
+  deep mode instead of quick review. (#55)
+- `gitlab_get_file_diff` per-file diff tool, preferred over full-diff spill
+  to stay under the file-spill threshold. (#61)
+- Mandatory lint rule in the reviewer scope prompt: at least one
+  `govard_audit_lint` call (diff scope) before `report_review_findings`.
+  (#64)
+- Magento phpunit invocation guidance in the `govard_shell` tool
+  description (`-c` config or bootstrap + scoped paths; no bare or
+  full-suite runs; `PIPESTATUS` trap). (#67)
+
+### Fixed
+
+- Read the auditor transcript across the session API skew. (#56)
+- Review effectiveness: finding dedup, severity calibration, lint detail,
+  worktree vendor bind. (#57)
+- Lint diff base default and container vendor bind. (#58)
+- Preserve the project mount and bind `env.php` in the container
+  override. (#59)
+- Xdebug off in the worktree env plus `--allow-xdebug` for lint runs.
+  (#60)
+- Collect nested envelope findings including the compat bucket for
+  non-phpcs/phpstan findings. (#62)
+- Strip the pterm `ERROR` trailer and collect `jobs`-nested findings.
+  (#63)
+- Strip `undefined` fields from collected lint findings (DSH rejects
+  non-lossless tool output). (#65)
+- Replace private project paths in test fixtures. (#66)
+
+## [0.3.2] - 2026-09-03
+
+### Removed
+
+- **Dead `supervisorModel` setting** — removed from `MaestroUserConfig` and the
+  settings-RPC savable keys (the supervisor runs a deterministic debug-agent
+  without LLM and the orchestrator never read it). Old clients sending the key
+  now get `Unknown settings key "supervisorModel"`.
+
 ## [0.3.1] - 2026-09-02
 
 ### Fixed

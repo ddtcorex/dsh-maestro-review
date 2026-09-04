@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile, symlink, stat, lstat } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { promisify } from 'node:util'
@@ -29,7 +29,7 @@ import * as ScopeSplitTool from './scope-split-tool.js'
 import * as GovardAuditLintTool from './govard-audit-lint-tool.js'
 import * as PerfLogStatsTool from './perf-log-stats-tool.js'
 import * as ReviewToolPolicy from './tool-policy.js'
-import type { ReviewFinding } from './review-findings-tool.js'
+import type { ReviewFinding, FindingSeverity } from './review-findings-tool.js'
 import type { ReviewRequest } from './events.js'
 import { loadUserConfig, type MaestroUserConfig, type ReviewModelSelection } from './config-store.js'
 import { hasCompletedReview, lastCompletedReview, pruneHistory, recordReviewFinish, recordReviewStart } from './review-history.js'
@@ -59,6 +59,62 @@ const execFileAsync = promisify(execFile)
 const GIT_TIMEOUT_MS = 60_000
 
 /**
+ * Finding severity, assigned by the reviewer. Display order is fixed
+ * (blocking first) wherever counts are rendered.
+ */
+export const SEVERITY_ORDER: readonly FindingSeverity[] = ['blocking', 'major', 'minor', 'nit'] as const
+
+const SEVERITY_LABEL: Record<FindingSeverity, string> = {
+  blocking: '🔴 Blocking',
+  major: '🟡 Major',
+  minor: '🔵 Minor',
+  nit: '⚪ Nit',
+}
+
+/** Missing or unknown severities degrade to `minor` — never drop a finding. */
+export function normalizeFindingSeverity(severity: unknown): FindingSeverity {
+  return severity === 'blocking' || severity === 'major' || severity === 'minor' || severity === 'nit'
+    ? severity
+    : 'minor'
+}
+
+export function severityPrefix(severity: unknown): string {
+  return SEVERITY_LABEL[normalizeFindingSeverity(severity)]
+}
+
+/** Count findings per severity; zero counts are omitted. */
+export function countFindingSeverities(findings: ReviewFinding[]): Partial<Record<FindingSeverity, number>> {
+  const counts: Partial<Record<FindingSeverity, number>> = {}
+  for (const finding of findings) {
+    const level = normalizeFindingSeverity(finding.severity)
+    counts[level] = (counts[level] ?? 0) + 1
+  }
+  return counts
+}
+
+export interface ReviewerScopePromptOpts {
+  scopeKind: 'discussion' | 'full'
+  discussionId?: string
+  path?: string
+  line?: number
+  mode?: string
+  profileInstruction: string
+}
+
+/**
+ * Reviewer scope prompt. Static analysis is mandatory: reviewers skipped
+ * govard_audit_lint for whole rounds (no lint signal at all), so the prompt
+ * requires at least one call before report_review_findings. Pure for testing.
+ */
+export function buildReviewerScopePrompt(opts: ReviewerScopePromptOpts): string {
+  const lintRule = 'LINT RULE: you MUST call govard_audit_lint at least once (scope "diff"; the MR base default is already wired, no base arg needed) before report_review_findings. A review with no lint call is incomplete.'
+  if (opts.scopeKind === 'discussion') {
+    return `${opts.profileInstruction}Review only the requested inline discussion ${opts.discussionId} at ${opts.path}:${opts.line}. Do not review unrelated files or start a broad audit. Call gitlab_get_mr_diff, then gitlab_get_file_diff for the file under review, then call report_review_findings exactly once when done. ${lintRule}`
+  }
+  return `${opts.profileInstruction}Review this merge request (${opts.mode} mode). Call gitlab_list_own_review_threads and gitlab_get_mr_diff first, then gitlab_get_file_diff per file you inspect (inline results never spill), then call report_review_findings exactly once when done. ${lintRule} DEDUP RULE: when a finding matches the substance of an existing own thread (same file and same underlying issue, even if worded differently — including resolved threads, whose reply reopens them), report it as {status: "reply", discussionId} instead of posting a new thread. Use status "new" only for issues with no matching thread.`
+}
+
+/**
  * Build a user-friendly GitLab Markdown comment for a completed review.
  * Shared design language with `reviewDigestText` (Telegram HTML) — same
  * header, status, findings structure, footer. Both use `🤖 Maestro Review`
@@ -72,7 +128,7 @@ export function buildReviewComment(opts: {
   profile?: string
   summary: string
   failures: string[]
-  findings?: { newCount: number; replyCount: number }
+  findings?: { newCount: number; replyCount: number; severityCounts?: Partial<Record<FindingSeverity, number>> }
   durationMs?: number
   isDiffOnly?: boolean
   isDiscussion?: boolean
@@ -97,6 +153,12 @@ export function buildReviewComment(opts: {
         const parts: string[] = []
         if (opts.findings.newCount > 0) parts.push(`💬 ${opts.findings.newCount} new`)
         if (opts.findings.replyCount > 0) parts.push(`🔁 ${opts.findings.replyCount} updated`)
+        if (opts.findings.severityCounts !== undefined) {
+          for (const level of SEVERITY_ORDER) {
+            const count = opts.findings.severityCounts[level] ?? 0
+            if (count > 0) parts.push(`${SEVERITY_LABEL[level].split(' ')[0]} ${count} ${level}`)
+          }
+        }
         if (parts.length === 0) parts.push('no inline findings')
         return `\n\n**Findings:** ${parts.join(' · ')}`
       })()
@@ -223,6 +285,7 @@ export const Config: z<Config> = z.object({
 export interface ReviewOutcome {
   summary: string
   failures: string[]
+  severityCounts?: Partial<Record<FindingSeverity, number>>
 }
 
 /**
@@ -374,10 +437,12 @@ export async function postReviewFindings(findings: ReviewFinding[], config: Gitl
   const headers = { 'PRIVATE-TOKEN': config.token, 'Content-Type': 'application/json' }
   for (const finding of findings) {
     let response: Response
+    const label = severityPrefix(finding.severity)
+    const body = finding.body.startsWith(label) ? finding.body : `${label}\n\n${finding.body}`
     if (finding.status === 'reply') {
       if (finding.discussionId === undefined) throw new Error('reply finding missing discussionId')
       response = await fetcher(`${apiBase}/discussions/${encodeURIComponent(finding.discussionId)}/notes`, {
-        method: 'POST', headers, body: JSON.stringify({ body: finding.body }),
+        method: 'POST', headers, body: JSON.stringify({ body }),
       })
     } else {
       if (finding.path === undefined || finding.line === undefined) throw new Error('new finding missing path or line')
@@ -395,12 +460,12 @@ export async function postReviewFindings(findings: ReviewFinding[], config: Gitl
         // Line not in diff — fallback to MR note so finding is not silently lost.
         response = await fetcher(`${apiBase}/notes`, {
           method: 'POST', headers,
-          body: JSON.stringify({ body: `**Inline fallback — \`${finding.path}:${finding.line}\` line is not in current MR diff**\n\n${finding.body}` }),
+          body: JSON.stringify({ body: `**Inline fallback — \`${finding.path}:${finding.line}\` line is not in current MR diff**\n\n${body}` }),
         })
       } else {
         response = await fetcher(`${apiBase}/discussions`, {
           method: 'POST', headers,
-          body: JSON.stringify({ body: finding.body, position: {
+          body: JSON.stringify({ body, position: {
             position_type: 'text', ...snapshot.diffRefs, old_path: change.old_path, new_path: change.new_path,
             ...linePosition.oldLine === undefined ? {} : { old_line: linePosition.oldLine },
             ...linePosition.newLine === undefined ? {} : { new_line: linePosition.newLine },
@@ -426,7 +491,8 @@ const inFlightKeys = new Set<string>()
 
 function reviewKey(payload: ReviewRequest): string {
   const scope = payload.scope.kind === 'mr' ? 'mr' : `discussion:${payload.scope.discussionId}`
-  return `${payload.projectId}:${payload.mrIid}:${payload.mode}:${scope}`
+  const sha = typeof payload.pushSha === 'string' && payload.pushSha !== '' ? `:${payload.pushSha}` : ''
+  return `${payload.projectId}:${payload.mrIid}:${payload.mode}:${scope}:${payload.trigger}${sha}`
 }
 
 /**
@@ -453,12 +519,42 @@ function assertSafeId(value: number, label: string): void {
   }
 }
 
+/**
+ * Read an agent session's transcript for the auditor's final output across
+ * host/session API skew: hosts built from the harness checkout expose
+ * `ownEvents()`/`snapshotEvents()` with no `.events` getter, while older
+ * packaged `@deepseek-ai/dsh-session` builds expose only the `.events`
+ * getter. `ownEvents()` (child-owned suffix, no fork prefix) matches
+ * `finalAssistantOutput`'s documented input best, so it wins when present.
+ * Returns `[]` — never throws — when no event source exists.
+ */
+export function auditorOutputFromSession(session: unknown) {
+  const candidate = session as {
+    ownEvents?: unknown
+    snapshotEvents?: unknown
+    events?: unknown
+  } | null | undefined
+  let events: unknown
+  if (typeof candidate?.ownEvents === 'function') {
+    events = (candidate.ownEvents as () => unknown)()
+  } else if (typeof candidate?.snapshotEvents === 'function') {
+    events = (candidate.snapshotEvents as () => unknown)()
+  } else {
+    events = candidate?.events
+  }
+  if (!Array.isArray(events)) return []
+  return finalAssistantOutput(events as Parameters<typeof finalAssistantOutput>[0]) ?? []
+}
+
 /** Full review + performance audit; resolves to the comment body that was posted. */
 export async function runReviewAndAudit(payload: ReviewRequest, deps: ReviewAndAuditDeps): Promise<string> {
   assertSafeId(payload.projectId, 'projectId')
   assertSafeId(payload.mrIid, 'mrIid')
   const key = reviewKey(payload)
-  if (inFlightKeys.has(key)) return ''
+  if (inFlightKeys.has(key)) {
+    console.error(`maestro-orchestrator: deduped duplicate in-flight review key=${key} trigger=${payload.trigger}`)
+    return ''
+  }
   inFlightKeys.add(key)
   try {
     const worktreePath = await deps.ensureWorktree(deps.localRepoPath, payload.sourceBranch, payload.projectId, payload.mrIid, reviewKeyHash(payload))
@@ -471,7 +567,7 @@ export async function runReviewAndAudit(payload: ReviewRequest, deps: ReviewAndA
       ])
       const labels = ['Reviewer', 'Auditor']
       if (settled[0].status === 'fulfilled') {
-        const { summary, failures } = settled[0].value
+        const { summary, failures, severityCounts } = settled[0].value
         // Try to parse findings counts from summary like "2 new inline comment(s), 1 thread(s) updated."
         const summaryText = summary ?? ''
         const newMatch = /(\d+)\s+new inline/.exec(summaryText)
@@ -488,7 +584,7 @@ export async function runReviewAndAudit(payload: ReviewRequest, deps: ReviewAndA
               profile: (deps as unknown as { reviewProfile?: string }).reviewProfile,
               summary: summaryText,
               failures,
-              findings: { newCount, replyCount },
+              findings: { newCount, replyCount, severityCounts },
             })
           : `## 🤖 Maestro Review\n\n**\`${payload.projectPath}\` !${payload.mrIid}** · ✅ Completed · \`${payload.mode}\`${(deps as unknown as { reviewProfile?: string }).reviewProfile !== undefined ? ` · \`${(deps as unknown as { reviewProfile: string }).reviewProfile}\`` : ''}\n\n${summaryText}${failures.length > 0 ? `\n\n<details>\n<summary>⚠️ Failed to post (${failures.length})</summary>\n\n${failures.map((f) => `- \`${f}\``).join('\n')}\n\n</details>` : ''}`
         sections.push(richOpts)
@@ -527,7 +623,10 @@ export async function runDiffOnlyReview(payload: ReviewRequest, deps: DiffOnlyRe
   assertSafeId(payload.projectId, 'projectId')
   assertSafeId(payload.mrIid, 'mrIid')
   const key = reviewKey(payload)
-  if (inFlightKeys.has(key)) return ''
+  if (inFlightKeys.has(key)) {
+    console.error(`maestro-orchestrator: deduped duplicate in-flight review key=${key} trigger=${payload.trigger}`)
+    return ''
+  }
   inFlightKeys.add(key)
   try {
     const { summary, failures } = await deps.runReviewer(payload)
@@ -560,7 +659,10 @@ export async function declineUnmappedDeepReview(payload: ReviewRequest, deps: Re
   assertSafeId(payload.projectId, 'projectId')
   assertSafeId(payload.mrIid, 'mrIid')
   const key = reviewKey(payload)
-  if (inFlightKeys.has(key)) return
+  if (inFlightKeys.has(key)) {
+    console.error(`maestro-orchestrator: deduped duplicate in-flight review key=${key} trigger=${payload.trigger}`)
+    return
+  }
   inFlightKeys.add(key)
   const depsWithUrl = deps as unknown as { gitlabBaseUrl?: string; projectPath?: string }
   const baseUrl = depsWithUrl.gitlabBaseUrl
@@ -619,7 +721,34 @@ export function isBranchNotFoundError(err: unknown): boolean {
  */
 export function govardWorktreeOverride(projectId: number, mrIid: number, keySuffix?: string): string {
   const name = `maestro-mr-${projectId}-${mrIid}${keySuffix === undefined ? '' : `-${keySuffix}`}`
-  return `project_name: ${name}\ndomain: ${name}.test\n`
+  // Xdebug stays off in review envs: the auditor runs no coverage, and an
+  // enabled Xdebug trips govard's lint perf-tax guard (exit 1, 0 findings).
+  return `project_name: ${name}\ndomain: ${name}.test\nstack:\n  features:\n    xdebug: false\n`
+}
+
+/**
+ * Fetch the MR's diff base SHA for govard diff-scope runs. Best-effort:
+ * returns undefined (the lint tool then fail-fasts with guidance) rather
+ * than failing the review when GitLab is unreachable.
+ */
+export async function fetchMrBaseSha(
+  baseUrl: string,
+  token: string,
+  projectId: number,
+  mrIid: number,
+  fetcher: typeof fetch = fetch,
+): Promise<string | undefined> {
+  try {
+    const response = await fetcher(
+      `${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mrIid}`,
+      { headers: { 'PRIVATE-TOKEN': token } },
+    )
+    if (!response.ok) return undefined
+    const mr = await response.json() as { diff_refs?: { base_sha?: string } }
+    return mr.diff_refs?.base_sha
+  } catch {
+    return undefined
+  }
 }
 
 export async function ensureWorktree(localRepoPath: string, sourceBranch: string, projectId: number, mrIid: number, keySuffix?: string): Promise<string> {
@@ -643,7 +772,132 @@ export async function ensureWorktree(localRepoPath: string, sourceBranch: string
     .catch(() => {})
   await execFileAsync('git', ['worktree', 'add', '--', worktreePath, `origin/${sourceBranch}`], { cwd: localRepoPath, timeout: GIT_TIMEOUT_MS })
   await writeFile(join(worktreePath, '.govard.local.yml'), govardWorktreeOverride(projectId, mrIid, keySuffix), 'utf-8')
+  await linkVendorIntoWorktree(localRepoPath, worktreePath)
+  await writeContainerVendorOverride(localRepoPath, worktreePath)
   return worktreePath
+}
+
+/**
+ * A vendor dir only counts as installed dependencies when the composer
+ * autoloader is a real file. Magento tracks `vendor/.htaccess`, so every
+ * worktree has a vendor/ stub — that stub must not pass for real deps, and
+ * must not block the container bind that provides them.
+ */
+export async function vendorHasAutoload(dir: string): Promise<boolean> {
+  try {
+    return (await stat(join(dir, 'vendor', 'autoload.php'))).isFile()
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Share the primary checkout's `vendor/` (and `app/etc/env.php` when the
+ * auditor needs a database) into the review worktree via symlinks, so
+ * phpunit/static analysis run against real dependencies instead of falling
+ * back to static-only. Links point INTO the worktree only — the primary
+ * checkout is never written to — and `git worktree remove --force` deletes
+ * the links along with the worktree. Missing sources, or targets that
+ * already exist (e.g. Magento's tracked `vendor/.htaccess` stub), are
+ * skipped quietly: the review still runs, the auditor discloses it.
+ */
+export async function linkVendorIntoWorktree(localRepoPath: string, worktreePath: string): Promise<string[]> {
+  const linked: string[] = []
+  const candidates: Array<{ source: string; target: string; dir: boolean; needsAutoload: boolean }> = [
+    { source: join(localRepoPath, 'vendor'), target: join(worktreePath, 'vendor'), dir: true, needsAutoload: true },
+    { source: join(localRepoPath, 'app', 'etc', 'env.php'), target: join(worktreePath, 'app', 'etc', 'env.php'), dir: false, needsAutoload: false },
+  ]
+  let advertised = false
+  for (const { source, target, dir, needsAutoload } of candidates) {
+    let isDir = false
+    try {
+      isDir = (await stat(source)).isDirectory()
+      if (dir !== isDir) continue
+    } catch {
+      continue
+    }
+    if (needsAutoload && !(await vendorHasAutoload(localRepoPath))) continue
+    if ((await lstat(target).catch(() => undefined)) !== undefined) {
+      console.error(`maestro-orchestrator: link target exists, skipping ${target}`)
+      continue
+    }
+    try {
+      if (!advertised) {
+        const sha = await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: localRepoPath, timeout: GIT_TIMEOUT_MS })
+          .then(({ stdout }) => stdout.trim()).catch(() => 'unknown')
+        console.error(`maestro-orchestrator: linking vendor from ${localRepoPath} @ ${sha} into ${worktreePath}`)
+        advertised = true
+      }
+      if (!dir) await mkdir(join(worktreePath, 'app', 'etc'), { recursive: true })
+      await symlink(source, target, dir ? 'dir' : 'file')
+      linked.push(target)
+    } catch (err) {
+      console.error(`maestro-orchestrator: failed to link ${source} into worktree:`, err)
+    }
+  }
+  if (!advertised) {
+    console.error(`maestro-orchestrator: no vendor/ in ${localRepoPath} — worktree ${worktreePath} runs without shared dependencies`)
+  }
+  return linked
+}
+
+/** Container path of the project root inside govard services. */
+const GOVARD_CONTAINER_WORKDIR = '/var/www/html'
+
+/**
+ * Render a compose override that bind-mounts the primary checkout's vendor/
+ * read-only into the php service. A host-side symlink alone dangles inside
+ * containers (absolute host path), so container tools (phpunit) need this
+ * bind to see real dependencies.
+ *
+ * The project mount (`.`) MUST be repeated first: govard merges overrides
+ * with MergeMap, which REPLACES lists instead of appending — an override
+ * carrying only the vendor bind would wipe `.:<workdir>` and leave the
+ * container docroot holding nothing but vendor/. Relative `.` resolves
+ * against the project root because govard passes --project-directory.
+ *
+ * Only the always-present `php` service is targeted: `php-debug` drops out
+ * of the rendered base when xdebug is off, and a volumes-only override
+ * entry would recreate it as a hollow service that fails compose validation.
+ */
+export function buildVendorOverrideYaml(vendorHostPath: string, envHostPath?: string, containerWorkDir: string = GOVARD_CONTAINER_WORKDIR): string {
+  const volumes = [
+    `.:${containerWorkDir}`,
+    `${vendorHostPath}:${containerWorkDir}/vendor:ro`,
+    ...(envHostPath !== undefined ? [`${envHostPath}:${containerWorkDir}/app/etc/env.php:ro`] : []),
+  ]
+  const service = `    volumes:\n${volumes.map((v) => `      - ${v}\n`).join('')}`
+  return `services:\n  php:\n${service}`
+}
+
+/**
+ * Drop the vendor bind override into the worktree (merged by govard via
+ * `.govard/docker-compose.override.yml`). Binds only when the primary
+ * checkout carries installed deps and the worktree does not — never shadow
+ * real deps with a possibly stale bind. Returns the written path, or
+ * undefined when skipped.
+ */
+export async function writeContainerVendorOverride(localRepoPath: string, worktreePath: string): Promise<string | undefined> {
+  const vendorHostPath = join(localRepoPath, 'vendor')
+  if (!(await vendorHasAutoload(localRepoPath))) return undefined
+  // Our own host-side symlink still needs the bind (it dangles in-container);
+  // only a real installed worktree vendor makes the bind redundant.
+  const wtLink = await lstat(join(worktreePath, 'vendor')).catch(() => undefined)
+  if (wtLink?.isSymbolicLink() !== true && await vendorHasAutoload(worktreePath)) return undefined
+  const overridePath = join(worktreePath, '.govard', 'docker-compose.override.yml')
+  await mkdir(join(worktreePath, '.govard'), { recursive: true })
+  // A linked env.php dangles in-container like the vendor symlink did — bind
+  // the real file over it when the primary checkout carries one.
+  const envHostPath = join(localRepoPath, 'app', 'etc', 'env.php')
+  let envBind: string | undefined
+  try {
+    if ((await stat(envHostPath)).isFile()) envBind = envHostPath
+  } catch {
+    envBind = undefined
+  }
+  await writeFile(overridePath, buildVendorOverrideYaml(vendorHostPath, envBind), 'utf-8')
+  console.error(`maestro-orchestrator: container vendor bind ${vendorHostPath} -> ${GOVARD_CONTAINER_WORKDIR}/vendor (ro) for ${worktreePath}`)
+  return overridePath
 }
 
 async function removeWorktree(worktreePath: string): Promise<void> {
@@ -667,6 +921,9 @@ export function apply(ctx: Context, config: Config): void {
   // effect without a plugin restart.
   let effectiveAgentTimeoutMs = config.agentTimeoutMs
   async function runReviewer(worktreePath: string | undefined, payload: ReviewRequest, effective: { gitlabBaseUrl: string; gitlabToken: string; botUsername: string }, reviewProfile?: ReviewSkillProfile, modelSelection?: ModelSelection, incrementalBlock?: string): Promise<ReviewOutcome> {
+    // MR base SHA feeds govard diff-scope runs; undefined degrades to the
+    // tool's fail-fast guidance instead of a wasted govard invocation.
+    const lintDefaultBase = await fetchMrBaseSha(effective.gitlabBaseUrl, effective.gitlabToken, payload.projectId, payload.mrIid)
     const primaryOptions = agentOptionsForModel(modelSelection ?? ctx.agentDefaultModel.currentSelection())
     const fallbackOptions: ModelSelection = { provider: primaryOptions.provider, model: primaryOptions.model }
     let lastHandle: AgentHandle | undefined
@@ -701,7 +958,7 @@ export function apply(ctx: Context, config: Config): void {
               await agentCtx.plugin(ModuleCheckTool, { rootPath: worktreePath })
               await agentCtx.plugin(PhtmlEscapeScanTool, { rootPath: worktreePath })
               await agentCtx.plugin(ScopeSplitTool, { rootPath: worktreePath })
-              await agentCtx.plugin(GovardAuditLintTool, { rootPath: worktreePath })
+              await agentCtx.plugin(GovardAuditLintTool, { rootPath: worktreePath, defaultBase: lintDefaultBase, allowXdebug: true })
               await agentCtx.plugin(PerfLogStatsTool, { rootPath: worktreePath })
             }
           },
@@ -717,8 +974,8 @@ export function apply(ctx: Context, config: Config): void {
           ? 'This is a diff-only review with no local checkout or Magento environment. Do not claim that tests, static analysis, or Magento runtime validation ran. '
           : `Call maestro_load_review_profile with {"profile":"${reviewProfile}"} before examining code. `
         let scopePrompt = payload.scope.kind === 'discussion'
-          ? `${profileInstruction}Review only the requested inline discussion ${payload.scope.discussionId} at ${payload.scope.path}:${payload.scope.line}. Do not review unrelated files or start a broad audit. Call gitlab_get_mr_diff, then call report_review_findings exactly once when done.`
-          : `${profileInstruction}Review this merge request (${payload.mode} mode). Call gitlab_list_own_review_threads and gitlab_get_mr_diff first, then call report_review_findings exactly once when done.`
+          ? buildReviewerScopePrompt({ scopeKind: 'discussion', discussionId: payload.scope.discussionId, path: payload.scope.path, line: payload.scope.line, profileInstruction })
+          : buildReviewerScopePrompt({ scopeKind: 'full', mode: payload.mode, profileInstruction })
         if (incrementalBlock !== undefined) scopePrompt = `${incrementalBlock}\n\n${scopePrompt}`
         handle.agent.followup(createUserMessage({
           content: [{ type: 'text', text: scopePrompt }],
@@ -759,7 +1016,7 @@ export function apply(ctx: Context, config: Config): void {
             failures.push(`${locator}: ${err instanceof Error ? err.message : String(err)}`)
           }
         }
-        return { summary: `${postedNew} new inline comment(s), ${postedReplies} thread(s) updated.`, failures }
+        return { summary: `${postedNew} new inline comment(s), ${postedReplies} thread(s) updated.`, failures, severityCounts: countFindingSeverities(capturedFindings) }
       } finally {
         await handle.dispose()
       }
@@ -822,7 +1079,7 @@ export function apply(ctx: Context, config: Config): void {
       const prompt = 'Audit this merge request\'s performance: bring up the environment, run the test suite, look for regressions, then write a Markdown report and tear the environment down.'
       handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: prompt }], source: { kind: 'user' } }))
       await whenIdleWithTimeout(handle, effectiveAgentTimeoutMs)
-      const output = finalAssistantOutput(handle.agent.session.events) ?? []
+      const output = auditorOutputFromSession(handle.agent.session)
       const text = output.map(block => ('text' in block ? block.text : '')).join('')
       return `## Maestro Performance Audit\n\n${text}`
     } finally {
@@ -851,13 +1108,19 @@ export function apply(ctx: Context, config: Config): void {
       const mapping = effective.projectMappings.find(m => m.projectPath === payload.projectPath)
       // Unmapped reviewer assignments remain no-ops. Only an explicit mention
       // may opt into the intentionally limited, diff-only fallback below.
-      if (mapping === undefined && payload.trigger !== 'mention') return
+      if (mapping === undefined && payload.trigger !== 'mention') {
+        console.error(`maestro-orchestrator: drop unmapped-assignment project=${payload.projectPath} mr=!${payload.mrIid} trigger=${payload.trigger}`)
+        return
+      }
       // A push only re-reviews an MR that already has a completed review;
       // otherwise every newly opened MR would be reviewed twice.
-      if (payload.trigger === 'push' && !(await hasCompletedReview(payload.projectId, payload.mrIid))) return
+      if (payload.trigger === 'push' && !(await hasCompletedReview(payload.projectId, payload.mrIid))) {
+        console.error(`maestro-orchestrator: drop push-no-completed-history project=${payload.projectPath} mr=!${payload.mrIid} trigger=${payload.trigger}`)
+        return
+      }
       const { gitlabToken } = effective
       if (gitlabToken === undefined) {
-        console.error(`maestro-orchestrator: MR !${String(payload.mrIid)} for project ${payload.projectPath} has no GitLab token — set one in Maestro Settings or MAESTRO_GITLAB_TOKEN`)
+        console.error(`maestro-orchestrator: drop missing-token project=${payload.projectPath} mr=!${String(payload.mrIid)} trigger=${payload.trigger} — set one in Maestro Settings or MAESTRO_GITLAB_TOKEN`)
         return
       }
       const resolved = { ...effective, gitlabToken }
@@ -943,7 +1206,7 @@ export function apply(ctx: Context, config: Config): void {
         : undefined
       await signals?.start()
       const postComment = async (body: string) => {
-        const response = await fetch(
+        const response = await GitlabClient.fetchWithTimeout(
           `${resolved.gitlabBaseUrl}/api/v4/projects/${payload.projectId}/merge_requests/${payload.mrIid}/notes`,
           {
             method: 'POST',
@@ -954,7 +1217,7 @@ export function apply(ctx: Context, config: Config): void {
         if (!response.ok) throw new Error(`GitLab API error ${response.status}: ${await response.text()}`)
       }
       const replyToDiscussion = async (discussionId: string, body: string) => {
-        const response = await fetch(
+        const response = await GitlabClient.fetchWithTimeout(
           `${resolved.gitlabBaseUrl}/api/v4/projects/${payload.projectId}/merge_requests/${payload.mrIid}/discussions/${encodeURIComponent(discussionId)}/notes`,
           {
             method: 'POST',
@@ -1009,6 +1272,12 @@ export function apply(ctx: Context, config: Config): void {
               writeFailedReport,
               gitlabBaseUrl: resolved.gitlabBaseUrl,
             } as unknown as DiffOnlyReviewDeps)
+            if (diffBody === '') {
+              console.error(`maestro-orchestrator: deduped duplicate in-flight review project=${payload.projectPath} mr=!${payload.mrIid} trigger=${payload.trigger}`)
+              await recordReviewFinish(historyId, { status: 'completed', summary: 'Duplicate in-flight review deduped — see the active run.' })
+              await signals?.finish('completed')
+              return
+            }
             const summary = summarize(diffBody)
             const branchNote = `fallback diff-only: branch ${payload.sourceBranch} not found on origin — ${summary ?? ''}`.trim()
             await recordReviewFinish(historyId, { status: 'completed', summary: branchNote })
@@ -1017,6 +1286,12 @@ export function apply(ctx: Context, config: Config): void {
             return
           }
           throw err
+        }
+        if (fullBody === '') {
+          console.error(`maestro-orchestrator: deduped duplicate in-flight review project=${payload.projectPath} mr=!${payload.mrIid} trigger=${payload.trigger}`)
+          await recordReviewFinish(historyId, { status: 'completed', summary: 'Duplicate in-flight review deduped — see the active run.' })
+          await signals?.finish('completed')
+          return
         }
         await recordReviewFinish(historyId, { status: 'completed', summary: summarize(fullBody) })
         notifyTelegram('completed', summarize(fullBody))
