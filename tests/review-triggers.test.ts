@@ -43,7 +43,10 @@ describe('resolveReviewTriggers', () => {
 
 describe('runReview trigger gates (silent skip)', () => {
   const handlers: Record<string, (p: any) => void> = {}
-  const ctx = { on: (ev: string, fn: (p: any) => void): void => { handlers[ev] = fn } }
+  const ctx = {
+    on: (ev: string, fn: (p: any) => void): void => { handlers[ev] = fn },
+    provide: (): void => {},
+  }
   const flush = async (): Promise<void> => {
     await new Promise((r) => setTimeout(r, 50))
     await new Promise((r) => setTimeout(r, 50))

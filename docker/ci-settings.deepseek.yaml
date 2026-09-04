@@ -1,0 +1,21 @@
+# docker/ci-settings.deepseek.yaml — deepseek route variant (no placeholders).
+# entrypoint.sh copies this over /app/settings.yaml when OPENCODE_GO_API_KEY is
+# absent and DEEPSEEK_API_KEY is present (key-based route selection). Serves
+# deepseek-official straight from api.deepseek.com — needs a LIVE deepseek.com
+# key (a zen-gateway key will 401 here). Contains NO secrets.
+llm-deepseek:
+  apiKeyEnv: DEEPSEEK_API_KEY
+  baseURL: https://api.deepseek.com
+  models:
+    - id: deepseek-v4-pro
+      name: DeepSeek V4 Pro
+    - id: deepseek-v4-flash
+      name: DeepSeek V4 Flash
+    - id: deepseek-v4-flash-vision-exp
+      name: DeepSeek V4 Flash Vision Exp
+      inputModalities:
+        - text
+        - image
+agent-default-model:
+  provider: deepseek-official
+  model: deepseek-v4-flash

@@ -1,0 +1,19 @@
+{
+  "name": "reviewer-ci-profile",
+  "private": true,
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@ddtcorex/dsh-maestro-review",
+        "@ddtcorex/maestro-skills"
+      ]
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-base": "link:../../deepseek-harness/packages/bundle/base",
+    "@deepseek-ai/dsh-agent-presets": "link:../../deepseek-harness/packages/preset/agent-presets",
+    "@ddtcorex/dsh-maestro-review": "link:../../packages/dsh-maestro-review",
+    "@ddtcorex/maestro-skills": "^2.11.0"
+  }
+}
