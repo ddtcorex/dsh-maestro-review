@@ -35,11 +35,13 @@ review:
       - review-report.json
       - review-report.md
   # Secrets — Protected + Masked, only available on the reviewer project's protected branches.
-  # MAESTRO_GITLAB_TOKEN is OPTIONAL: entrypoint.sh prefers the job's short-lived
-  # CI_JOB_TOKEN (needs the source project to allowlist this reviewer project under
-  # Settings → CI/CD → Job token scope). Set a PAT/Project Token here only as a
-  # manual override (e.g. local `docker run`, where no CI_JOB_TOKEN exists).
-  # MAESTRO_GITLAB_TOKEN (Project Access Token, api) — override only
+  # MAESTRO_GITLAB_TOKEN is REQUIRED and must be a user PAT or Group/Project
+  # Access Token (api scope). CI_JOB_TOKEN is NOT enough: proven 2026-09-04 on
+  # GitLab 18.11 that reads work (GET=200) but posting the review comment fails
+  # (POST /notes=401) even with the source project allowlisting this reviewer —
+  # the run would "complete" without ever posting. A human-tied PAT needs yearly
+  # rotation; prefer a bot/group token where the instance allows creating one.
+  # MAESTRO_GITLAB_TOKEN (api scope) — required
   # Route selection is key-based (entrypoint.sh swaps the baked settings variant):
   # OPENCODE_GO_API_KEY → opencode profile (default, host mirror; serves opencode-go
   #   AND deepseek-official-via-zen). Set alone, or with DEEPSEEK_API_KEY (opencode wins).

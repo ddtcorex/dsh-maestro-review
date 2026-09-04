@@ -1,15 +1,13 @@
 #!/bin/sh
 set -eu
-# Auth: prefer the job's short-lived CI_JOB_TOKEN (cross-project via the source
-# project's job-token allowlist) over a stored PAT; an explicit
-# MAESTRO_GITLAB_TOKEN still wins as a manual override. The header kind follows
-# the token (ci-trigger/orchestrator read GITLAB_TOKEN_KIND).
-if [ -z "${MAESTRO_GITLAB_TOKEN:-}" ] && [ -n "${CI_JOB_TOKEN:-}" ]; then
-  export MAESTRO_GITLAB_TOKEN="$CI_JOB_TOKEN"
-  export GITLAB_TOKEN_KIND=job
-fi
+# Auth: MAESTRO_GITLAB_TOKEN must be a PAT/Project/Group token (api scope).
+# CI_JOB_TOKEN is deliberately NOT accepted: proven 2026-09-04 on GitLab 18.11
+# (GET=200 but POST /notes=401 even with the source allowlisting this project),
+# so falling back would "complete" reviews without ever posting the comment.
+# The JOB-TOKEN header path (GITLAB_TOKEN_KIND, gitlab-auth.ts) stays for
+# future use; it just must not be wired here until writes work.
 if [ -z "${MAESTRO_GITLAB_TOKEN:-}" ] || [ -z "${SOURCE_PROJECT_ID:-}" ] || [ -z "${MR_IID:-}" ]; then
-  echo "[review] missing required env (MAESTRO_GITLAB_TOKEN, SOURCE_PROJECT_ID, MR_IID)" >&2
+  echo "[review] missing required env (MAESTRO_GITLAB_TOKEN as a user/project token, SOURCE_PROJECT_ID, MR_IID)" >&2
   exit 1
 fi
 if [ -n "${CI_PROJECT_DIR:-}" ]; then cd "$CI_PROJECT_DIR"; fi
