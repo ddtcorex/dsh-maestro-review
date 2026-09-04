@@ -43,13 +43,21 @@ export function createReviewSignals(options: { baseUrl: string; token: string; p
       try {
         await unawardOwn(baseUrl, token, projectId, mrIid, botUsername)
         await award(baseUrl, token, projectId, mrIid, 'eyes')
-      } catch { /* signalling must never break the review */ }
+      } catch (err) {
+        // Signalling must never break the review, but a swallowed failure
+        // here is exactly what leaves a stale "eyes" marker stuck on the MR
+        // forever (blocking the push-gate's 👀-running check for both the
+        // webhook and CI flows) with zero trace of why — log it.
+        console.error(`review-signals: failed to set the running marker on MR !${mrIid}`, err)
+      }
     },
     async finish(outcome) {
       try {
         await unawardOwn(baseUrl, token, projectId, mrIid, botUsername)
         await award(baseUrl, token, projectId, mrIid, outcome === 'completed' ? 'white_check_mark' : 'warning')
-      } catch { /* signalling must never break the review */ }
+      } catch (err) {
+        console.error(`review-signals: failed to clear the running marker / award the final marker on MR !${mrIid}`, err)
+      }
     },
   }
 }
