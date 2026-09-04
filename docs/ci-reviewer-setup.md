@@ -27,8 +27,12 @@ project). Image: `docker/Dockerfile` → published as
      project allowlists the reviewer. The run would "complete" without ever
      posting. Prefer a bot/group token where the instance allows creating
      one (a human PAT needs yearly rotation).
-   - `OPENCODE_GO_API_KEY` **or** `DEEPSEEK_API_KEY` — model route selection
-     is key-based, see [section 5](#5-model-selection).
+   - `DEEPSEEK_API_KEY` (**required** unless using the route below) — the
+     sole baked default, serves `deepseek-official` straight from
+     `api.deepseek.com`. **Or** set `REVIEW_LLM_API_KEY` + `REVIEW_LLM_BASE_URL`
+     + `REVIEW_LLM_MODEL` instead to point the reviewer at any
+     OpenAI-compatible endpoint (self-hosted, Azure OpenAI, OpenRouter, a
+     private gateway, ...) — see [section 5](#5-model-selection).
    - `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` (optional) — review digest.
 4. The reviewer job needs **no source checkout** (`GIT_STRATEGY: none`); it
    boots `dsh --profile reviewer-ci` inside the image.
@@ -148,12 +152,25 @@ No settings mount required — everything is env-driven:
 
 | Keys set | Route |
 |---|---|
-| `OPENCODE_GO_API_KEY` alone (or with `DEEPSEEK_API_KEY`) | opencode profile (default; serves `opencode-go` **and** `deepseek-official-via-zen`) |
-| `DEEPSEEK_API_KEY` only | deepseek profile (`deepseek-official` straight from `api.deepseek.com` — needs a live key) |
+| `REVIEW_LLM_API_KEY` set | **bring-your-own OpenAI-compatible endpoint** (overlays the default) |
+| Nothing above set | deepseek (sole baked default; `deepseek-official` straight from `api.deepseek.com` — needs `DEEPSEEK_API_KEY` at call time) |
 
-- `OPENCODE_MODEL` (single variable, default `muse-spark-1.3-contributor`).
+- **Bring-your-own OpenAI-compatible endpoint** (self-hosted, Azure OpenAI,
+  OpenRouter, a private gateway, ...) — set:
+  - `REVIEW_LLM_API_KEY` (**required** to select this route, Protected +
+    Masked) — the endpoint's API key; never touches the shell, resolved by
+    `dsh` at call time.
+  - `REVIEW_LLM_BASE_URL` (**required** once `REVIEW_LLM_API_KEY` is set; the
+    job fails closed otherwise) — e.g. `https://my-gateway.example.com/v1`.
+  - `REVIEW_LLM_MODEL` (**required** once `REVIEW_LLM_API_KEY` is set; the
+    job fails closed otherwise) — the model id as the endpoint expects it.
+  - `REVIEW_LLM_API` (optional, default `openai-completions`) — the wire
+    protocol: `openai-completions` or `openai-responses`. Any other value
+    fails closed (only OpenAI-compatible protocols are supported).
 - `REVIEW_MODEL_PROVIDER` + `REVIEW_MODEL` (pair — set both or neither;
-  ID without provider fails closed, provider without ID is ignored).
+  ID without provider fails closed, provider without ID is ignored). This is
+  a separate, higher-priority per-project override on top of whichever route
+  above is selected — leave unset to just use the route's default model.
 - `REVIEW_PROFILE`: `magento2 | laravel | symfony | wordpress | generic`
   (unset = legacy diff-only generic review; the reviewer fails closed if it
   cannot load the full skill set).

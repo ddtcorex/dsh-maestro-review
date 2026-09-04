@@ -1,0 +1,21 @@
+# docker/ci-settings.generic-openai.yaml — bring-your-own OpenAI-compatible
+# route, overlaid on the deepseek default by entrypoint.sh whenever
+# REVIEW_LLM_API_KEY is set — lets a deployment point the reviewer at any
+# OpenAI-compatible endpoint (self-hosted, Azure OpenAI, OpenRouter, a private
+# gateway, ...) instead of api.deepseek.com. entrypoint.sh substitutes
+# __REVIEW_LLM_API__ (from $REVIEW_LLM_API, default openai-completions),
+# __REVIEW_LLM_BASE_URL__, and __REVIEW_LLM_MODEL__ before dsh boots.
+# Contains NO secrets — the key resolves at call time from REVIEW_LLM_API_KEY.
+llm-pi-ai:
+  providers:
+    custom-openai:
+      displayName: Custom OpenAI-compatible
+      apiKeyEnv: REVIEW_LLM_API_KEY
+      api: __REVIEW_LLM_API__
+      baseURL: __REVIEW_LLM_BASE_URL__
+      models:
+        - id: __REVIEW_LLM_MODEL__
+          name: Custom Review Model
+agent-default-model:
+  provider: custom-openai
+  model: __REVIEW_LLM_MODEL__

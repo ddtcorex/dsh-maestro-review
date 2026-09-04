@@ -42,18 +42,21 @@ review:
   # the run would "complete" without ever posting. A human-tied PAT needs yearly
   # rotation; prefer a bot/group token where the instance allows creating one.
   # MAESTRO_GITLAB_TOKEN (api scope) — required
-  # Route selection is key-based (entrypoint.sh swaps the baked settings variant):
-  # OPENCODE_GO_API_KEY → opencode profile (default, host mirror; serves opencode-go
-  #   AND deepseek-official-via-zen). Set alone, or with DEEPSEEK_API_KEY (opencode wins).
-  # DEEPSEEK_API_KEY → deepseek profile ONLY when OPENCODE_GO_API_KEY is absent
-  #   (deepseek-official straight from api.deepseek.com — needs a LIVE deepseek.com key).
+  # Model route selection — deepseek is the sole baked default; set
+  # REVIEW_LLM_API_KEY to overlay any OpenAI-compatible endpoint instead:
+  # DEEPSEEK_API_KEY (required unless using the route below) — deepseek-official
+  #   straight from api.deepseek.com.
+  # REVIEW_LLM_API_KEY / REVIEW_LLM_BASE_URL / REVIEW_LLM_MODEL — bring-your-own
+  #   OpenAI-compatible endpoint (self-hosted, Azure OpenAI, OpenRouter, a
+  #   private gateway, ...). All three required together; the job fails closed
+  #   if REVIEW_LLM_API_KEY is set without the other two. Optional
+  #   REVIEW_LLM_API selects the wire protocol (openai-completions [default]
+  #   or openai-responses).
   # TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID (optional)
-  # Opencode model (optional, one variable — default muse-spark-1.3-contributor):
-  # OPENCODE_MODEL: "muse-spark-1.3-contributor"
-  # Model pin (optional, as a pair — unset both for the host-mirrored default
-  #   = opencode-go/muse-spark-1.3-contributor, baked in docker/ci-settings.yaml):
-  # REVIEW_MODEL_PROVIDER: "opencode-go"             # or "deepseek-official"
-  # REVIEW_MODEL: "muse-spark-1.3-contributor"       # e.g. deepseek-v4-flash (deepseek-official via zen)
+  # Model pin (optional, as a pair — unset both for the active route's default
+  #   model, baked in docker/ci-settings.*.yaml):
+  # REVIEW_MODEL_PROVIDER: "deepseek-official"       # or "custom-openai"
+  # REVIEW_MODEL: "deepseek-v4-flash"                # the active route's model id
   #   Only the provider's key is needed — no settings mount required. ID without
   #   provider fails the review with a provider error (not silently the wrong
   #   model); provider without ID is ignored.

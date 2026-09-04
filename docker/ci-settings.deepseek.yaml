@@ -1,8 +1,10 @@
-# docker/ci-settings.deepseek.yaml — deepseek route variant (no placeholders).
-# entrypoint.sh copies this over /app/settings.yaml when OPENCODE_GO_API_KEY is
-# absent and DEEPSEEK_API_KEY is present (key-based route selection). Serves
-# deepseek-official straight from api.deepseek.com — needs a LIVE deepseek.com
-# key (a zen-gateway key will 401 here). Contains NO secrets.
+# docker/ci-settings.deepseek.yaml — template baked to /app/settings.yaml
+# (DSH_HOME), the sole default route. __CI_MANAGED__ marks this file as ours:
+# entrypoint.sh only overlays the generic OpenAI-compatible route (when
+# REVIEW_LLM_API_KEY is set) when the marker is present, so a job-mounted
+# /app/settings.yaml passes through untouched. Serves deepseek-official
+# straight from api.deepseek.com — needs a LIVE deepseek.com key (a
+# zen-gateway key will 401 here). Contains NO secrets.
 llm-deepseek:
   apiKeyEnv: DEEPSEEK_API_KEY
   baseURL: https://api.deepseek.com

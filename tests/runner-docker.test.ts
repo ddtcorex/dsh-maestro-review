@@ -17,8 +17,10 @@ describe('docker', () => {
     expect(df).toMatch(/ENV DSH_HOME=\/app\s*$/m)
     expect(df).toMatch(/\.agent-presets\/dsh-maestro-reviewer/)
     expect(df).toMatch(/\.agent-presets\/dsh-maestro-auditor/)
-    expect(df).toMatch(/ci-settings\.opencode\.yaml \/app\/settings\.yaml/)
-    expect(df).toMatch(/ci-settings\.deepseek\.yaml \/app\/settings\.deepseek\.yaml/)
+    // deepseek is the sole baked default; opencode was removed entirely
+    expect(df).toMatch(/ci-settings\.deepseek\.yaml \/app\/settings\.yaml/)
+    expect(df).toMatch(/ci-settings\.generic-openai\.yaml \/app\/settings\.generic-openai\.yaml/)
+    expect(df).not.toMatch(/opencode/i)
     expect(df).toMatch(/tini/)
     expect(df).toMatch(/ENTRYPOINT.*entrypoint\.sh/)
     // CI deep reviews clone the source at the MR head SHA — git must exist in the image.
@@ -36,38 +38,56 @@ describe('docker', () => {
     expect(sh).toMatch(/CI_PROJECT_DIR/)
     expect(sh).toMatch(/MAESTRO_GITLAB_TOKEN as a user\/project token/)
     expect(sh).toMatch(/GITLAB_TOKEN_KIND/)
-    expect(sh).toMatch(/OPENCODE_MODEL/)
-    expect(sh).toMatch(/__OPENCODE_MODEL__/)
     expect(sh).toMatch(/__CI_MANAGED__/)
-    expect(sh).toMatch(/settings\.deepseek\.yaml/)
-    expect(sh).toMatch(/DEEPSEEK_API_KEY/)
     expect(sh).toMatch(/\.maestro-history/)
     expect(sh).toMatch(/dsh-maestro-review/)
+    // opencode was removed entirely — no leftover references
+    expect(sh).not.toMatch(/OPENCODE/)
   })
 
-  it('ci-settings.opencode.yaml mirrors the host LLM config with no embedded secrets', () => {
-    const yml = readFileSync('docker/ci-settings.opencode.yaml', 'utf-8')
-    expect(yml).toMatch(/__CI_MANAGED__/)
-    expect(yml).toMatch(/opencode-go/)
-    expect(yml).toMatch(/llm-deepseek:/)
-    // the opencode model is one env variable, substituted by entrypoint.sh
-    // (exactly two value positions: catalog id + agent default)
-    expect(yml.match(/^\s+(?:- id|model): __OPENCODE_MODEL__$/gm)).toHaveLength(2)
+  it('entrypoint.sh overlays the generic OpenAI-compatible route only when REVIEW_LLM_API_KEY is set, otherwise keeps the baked deepseek default', () => {
+    const sh = readFileSync('docker/entrypoint.sh', 'utf-8')
+    expect(sh).toMatch(/REVIEW_LLM_API_KEY/)
+    expect(sh).toMatch(/REVIEW_LLM_BASE_URL/)
+    expect(sh).toMatch(/REVIEW_LLM_MODEL/)
+    expect(sh).toMatch(/REVIEW_LLM_API\b/)
+    expect(sh).toMatch(/settings\.generic-openai\.yaml/)
+    // selection keys on the API key's presence, not the base URL
+    const apiKeyIdx = sh.search(/REVIEW_LLM_API_KEY:-/)
+    expect(apiKeyIdx).toBeGreaterThan(-1)
+    // fails closed when the key is set but base URL / model are missing
+    expect(sh).toMatch(/REVIEW_LLM_BASE_URL.*(is|must be) (required|set)/)
+    expect(sh).toMatch(/REVIEW_LLM_MODEL.*(is|must be) (required|set)/)
+    // only openai-completions/openai-responses are accepted (OpenAI-compatible only)
+    expect(sh).toMatch(/openai-completions/)
+    expect(sh).toMatch(/openai-responses/)
+    // no more key-based opencode/deepseek swap branch — deepseek is simply the
+    // baked default with nothing left to switch away from
+    expect(sh).not.toMatch(/settings\.deepseek\.yaml/)
+    expect(sh).not.toMatch(/\$\{?DEEPSEEK_API_KEY/)
+  })
+
+  it('ci-settings.generic-openai.yaml declares a bring-your-own OpenAI-compatible route with no embedded secrets', () => {
+    const yml = readFileSync('docker/ci-settings.generic-openai.yaml', 'utf-8')
+    expect(yml).toMatch(/^llm-pi-ai:/m)
+    expect(yml).toMatch(/custom-openai:/)
+    expect(yml).toMatch(/apiKeyEnv:\s*REVIEW_LLM_API_KEY/)
+    expect(yml).toMatch(/api:\s*__REVIEW_LLM_API__/)
+    expect(yml).toMatch(/baseURL:\s*__REVIEW_LLM_BASE_URL__/)
+    expect(yml.match(/^\s+(?:- id|model): __REVIEW_LLM_MODEL__$/gm)).toHaveLength(2)
     expect(yml).toMatch(/^agent-default-model:/m)
-    expect(yml).toMatch(/apiKeyEnv:\s*OPENCODE_GO_API_KEY/)
-    // keys resolve from env at call time — never baked in
+    expect(yml).toMatch(/provider:\s*custom-openai/)
     expect(yml).not.toMatch(/sk-[A-Za-z0-9]{8,}/)
     expect(yml).not.toMatch(/glpat-[A-Za-z0-9_.-]{8,}/)
   })
 
-  it('ci-settings.deepseek.yaml serves deepseek-official from api.deepseek.com', () => {
+  it('ci-settings.deepseek.yaml is the sole baked default, serving deepseek-official from api.deepseek.com', () => {
     const yml = readFileSync('docker/ci-settings.deepseek.yaml', 'utf-8')
+    expect(yml).toMatch(/__CI_MANAGED__/)
     expect(yml).toMatch(/llm-deepseek:/)
     expect(yml).toMatch(/apiKeyEnv:\s*DEEPSEEK_API_KEY/)
     expect(yml).toMatch(/baseURL:\s*https:\/\/api\.deepseek\.com/)
     expect(yml).toMatch(/provider:\s*deepseek-official/)
-    expect(yml).not.toMatch(/__OPENCODE_MODEL__/)
-    expect(yml).not.toMatch(/__CI_MANAGED__/)
     expect(yml).not.toMatch(/sk-[A-Za-z0-9]{8,}/)
   })
 })
