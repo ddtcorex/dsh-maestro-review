@@ -625,7 +625,8 @@ export async function runReviewAndAudit(payload: ReviewRequest, deps: ReviewAndA
       try {
         if (payload.scope.kind === 'discussion') await deps.replyToDiscussion(payload.scope.discussionId, body)
         else await deps.postComment(body)
-      } catch {
+      } catch (err) {
+        console.error(`maestro-orchestrator: posting review comment failed: ${err instanceof Error ? err.message : String(err)}`)
         await deps.writeFailedReport(payload.mrIid, body)
       }
       return body
@@ -666,7 +667,8 @@ export async function runDiffOnlyReview(payload: ReviewRequest, deps: DiffOnlyRe
     try {
       if (payload.scope.kind === 'discussion') await deps.replyToDiscussion(payload.scope.discussionId, body)
       else await deps.postComment(body)
-    } catch {
+    } catch (err) {
+      console.error(`maestro-orchestrator: posting review comment failed: ${err instanceof Error ? err.message : String(err)}`)
       await deps.writeFailedReport(payload.mrIid, body)
     }
     return body
@@ -691,7 +693,8 @@ export async function declineUnmappedDeepReview(payload: ReviewRequest, deps: Re
     try {
       if (payload.scope.kind === 'discussion') await deps.replyToDiscussion(payload.scope.discussionId, body)
       else await deps.postComment(body)
-    } catch {
+    } catch (err) {
+      console.error(`maestro-orchestrator: posting review comment failed: ${err instanceof Error ? err.message : String(err)}`)
       await deps.writeFailedReport(payload.mrIid, body)
     }
   } finally {

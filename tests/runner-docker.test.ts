@@ -30,6 +30,7 @@ describe('docker', () => {
     expect(sh).toMatch(/--profile reviewer-ci"?\s*$/m)
     expect(sh).not.toMatch(/cli\.js/)
     expect(sh).toMatch(/REVIEW_REPORT_DIR/)
+    expect(sh).toMatch(/CI_PROJECT_DIR/)
     expect(sh).toMatch(/CI_JOB_TOKEN/)
     expect(sh).toMatch(/GITLAB_TOKEN_KIND/)
     expect(sh).toMatch(/OPENCODE_MODEL/)

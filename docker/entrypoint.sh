@@ -12,7 +12,12 @@ if [ -z "${MAESTRO_GITLAB_TOKEN:-}" ] || [ -z "${SOURCE_PROJECT_ID:-}" ] || [ -z
   echo "[review] missing required env (MAESTRO_GITLAB_TOKEN, SOURCE_PROJECT_ID, MR_IID)" >&2
   exit 1
 fi
+if [ -n "${CI_PROJECT_DIR:-}" ]; then cd "$CI_PROJECT_DIR"; fi
 export REVIEW_REPORT_DIR="$PWD"
+# GitLab's docker executor keeps the image WORKDIR (/app), not the job's build
+# dir — without this, reports/history land inside the container and the
+# artifacts/cache steps find nothing (proven 2026-09-04 live). Local `docker
+# run -w` sets PWD already, so this only fires in real CI.
 # Key-based route selection (only for our baked template — the __CI_MANAGED__
 # marker; a job-mounted settings.yaml passes through untouched): opencode is the
 # default (host mirror) unless only a deepseek key is present. An explicit
