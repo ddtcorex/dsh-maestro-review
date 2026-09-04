@@ -1,6 +1,22 @@
 import { describe, it, expect, vi } from 'vitest'
 
 vi.mock('../src/host/config-store.js', () => ({ loadUserConfig: async () => ({}) }))
+vi.mock('../src/host/ci-clone.js', () => ({
+  cloneSourceRepo: vi.fn(async (opts: any) => opts.dir),
+  defaultRun: vi.fn(async () => {}),
+  redactCloneUrl: (u: string) => u,
+}))
+// runReview writes history to disk — stub the store so tests stay hermetic
+// (existing tests in this file return before reaching it).
+vi.mock('../src/host/review-history.js', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../src/host/review-history.js')>()
+  return {
+    ...mod,
+    recordReviewStart: vi.fn(async () => {}),
+    recordReviewFinish: vi.fn(async () => {}),
+    lastCompletedReview: vi.fn(async () => undefined),
+  }
+})
 
 describe('orchestrator.apply — reviewRunner wiring', () => {
   it('registers the maestro/review-request event handler and provides reviewRunner', async () => {
@@ -36,8 +52,7 @@ describe('orchestrator.apply — reviewRunner wiring', () => {
     expect(result).toEqual({ ok: true, failures: [], durationMs: expect.any(Number) })
   })
 
-  it('runReview resolves { ok: false } with a failure message when no GitLab token is configured', async () => {
-    const { apply } = await import('../src/host/orchestrator.js')
+  it('runReview resolves { ok: false } with a failure message when no GitLab token is configured', async () => {    const { apply } = await import('../src/host/orchestrator.js')
     let runReview: ((payload: any) => Promise<any>) | undefined
     const fakeCtx = {
       on: () => {},
@@ -52,6 +67,53 @@ describe('orchestrator.apply — reviewRunner wiring', () => {
     expect(result.failures).toHaveLength(1)
     expect(result.failures[0]).toMatch(/no GitLab token/)
   })
+})
+
+describe('CI deep review', () => {
+  const CI_ENV = { SOURCE_PROJECT_ID: '1', MR_IID: '2', GITLAB_HOST: 'gitlab.example.com', MAESTRO_GITLAB_TOKEN: 't' }
+  function setCiEnv() { for (const [k, v] of Object.entries(CI_ENV)) process.env[k] = v }
+  function clearCiEnv() { for (const k of Object.keys(CI_ENV)) delete process.env[k] }
+
+  it('shouldCiDeepReview is true only for deep + CI env + headSha', async () => {
+    const { shouldCiDeepReview } = await import('../src/host/orchestrator.js')
+    setCiEnv()
+    try {
+      expect(shouldCiDeepReview({ mode: 'deep', headSha: 'abc' } as any)).toBe(true)
+      expect(shouldCiDeepReview({ mode: 'quick', headSha: 'abc' } as any)).toBe(false)
+      expect(shouldCiDeepReview({ mode: 'deep' } as any)).toBe(false)
+    } finally { clearCiEnv() }
+    expect(shouldCiDeepReview({ mode: 'deep', headSha: 'abc' } as any)).toBe(false)
+  })
+
+  it('withAuditorDegrade returns reviewer-only note when the auditor throws', async () => {
+    const { withAuditorDegrade } = await import('../src/host/orchestrator.js')
+    const wrapped = withAuditorDegrade(async () => { throw new Error('govard: binary not found') })
+    await expect(wrapped('/tmp/x', {} as any)).resolves.toMatch(/reviewer-only/)
+  })
+
+  it('withAuditorDegrade passes auditor output through', async () => {
+    const { withAuditorDegrade } = await import('../src/host/orchestrator.js')
+    const wrapped = withAuditorDegrade(async () => 'audit says hi')
+    await expect(wrapped('/tmp/x', {} as any)).resolves.toBe('audit says hi')
+  })
+
+  it('runReview clones and enters the mapped machinery instead of declining', async () => {
+    const { apply } = await import('../src/host/orchestrator.js')
+    const { cloneSourceRepo } = await import('../src/host/ci-clone.js')
+    setCiEnv()
+    try {
+      let runReview: ((payload: any) => Promise<any>) | undefined
+      apply({ on: () => {}, provide: (name: string, fn: any) => { if (name === 'reviewRunner') runReview = fn } } as any,
+        { projectMappings: [], gitlabBaseUrl: 'https://gitlab.example.com', botUsername: 'b', agentTimeoutMs: 1000, gitlabToken: 't' })
+      const result = await runReview!({
+        projectPath: 'group/proj', projectId: 1, mrIid: 2, sourceBranch: 'feat/x', headSha: 'abc123',
+        trigger: 'mention', mode: 'deep', scope: { kind: 'mr' },
+      })
+      expect(cloneSourceRepo).toHaveBeenCalledWith(expect.objectContaining({ projectId: 1, headSha: 'abc123', token: 't' }))
+      const text = `${result.summary ?? ''} ${result.failures.join(' ')}`
+      expect(text).not.toMatch(/declined/)
+    } finally { clearCiEnv() }
+  }, 30000)
 })
 
 describe('resolveReviewModel — row-config reviewModel', () => {  it('uses the row selection when mapping and user config are absent (CI profile case)', async () => {

@@ -42,6 +42,7 @@ import { gitlabProvider } from './providers/gitlab.js'
 import './events.js'
 import { gitlabAuthHeaders } from './gitlab-auth.js'
 import { reviewMarker, resolveFlow, type ReviewFlow } from './review-marker.js'
+import { cloneSourceRepo, defaultRun } from './ci-clone.js'
 
 // Provider-aware wrapper — orchestrator can run reviews via any ReviewProvider.
 // This keeps the GitLab-specific flow intact while allowing Phase C to add GitHub/Jira without modifying core logic.
@@ -582,6 +583,27 @@ export function auditorOutputFromSession(session: unknown) {
 function commentMarker(payload: ReviewRequest): { sha: string; flow: ReviewFlow } | undefined {
   if (payload.headSha === undefined) return undefined
   return { sha: payload.headSha, flow: resolveFlow(payload.mode) }
+}
+
+/** CI-deep decision: deep mode + CI env + head SHA (spec §3). Mapping is checked by the caller. */
+export function shouldCiDeepReview(payload: ReviewRequest): boolean {
+  return payload.mode === 'deep'
+    && payload.headSha !== undefined
+    && process.env.SOURCE_PROJECT_ID !== undefined
+    && process.env.MR_IID !== undefined
+}
+
+/** Auditor degrade for CI (no runtime env): a govard throw becomes reviewer-only, never a failed review. */
+export function withAuditorDegrade(
+  runAuditor: (worktreePath: string, payload: ReviewRequest) => Promise<string>,
+): (worktreePath: string, payload: ReviewRequest) => Promise<string> {
+  return async (worktreePath, payload) => {
+    try {
+      return await runAuditor(worktreePath, payload)
+    } catch {
+      return 'Auditor skipped — no runtime environment in CI (reviewer-only review).'
+    }
+  }
 }
 
 export async function runReviewAndAudit(payload: ReviewRequest, deps: ReviewAndAuditDeps): Promise<string> {
@@ -1140,6 +1162,10 @@ export function apply(ctx: Context, config: Config): void {
         })
       }
       const mapping = effective.projectMappings.find(m => m.projectPath === payload.projectPath)
+      // CI-deep (spec §3): unmapped deep review with CI env + head SHA skips
+      // both the decline and the diff-only fallback and runs the clone branch
+      // below, which shares the mapped path's completion tail.
+      const ciDeep = mapping === undefined && payload.mode === 'deep' && shouldCiDeepReview(payload)
       // Unmapped reviewer assignments remain no-ops. Only an explicit mention
       // may opt into the intentionally limited, diff-only fallback below.
       if (mapping === undefined && payload.trigger !== 'mention') {
@@ -1269,8 +1295,10 @@ export function apply(ctx: Context, config: Config): void {
         if (!response.ok) throw new Error(`GitLab API error ${response.status}: ${await response.text()}`)
       }
       try {
-        if (mapping === undefined) {
-          if (payload.mode === 'deep') {
+        if (mapping === undefined && !ciDeep) {
+          // CI-deep (spec §3) skips the decline and falls through to the clone
+          // branch below; every other unmapped deep review still declines here.
+          if (payload.mode === 'deep' && !shouldCiDeepReview(payload)) {
             await declineUnmappedDeepReview(payload, { postComment, replyToDiscussion, writeFailedReport, gitlabBaseUrl: resolved.gitlabBaseUrl } as unknown as ReviewCommentDeps)
             await recordReviewFinish(historyId, { status: 'completed', summary: 'Deep review declined (unmapped project)' })
             notifyTelegram('completed', 'Deep review declined (unmapped project)')
@@ -1290,6 +1318,42 @@ export function apply(ctx: Context, config: Config): void {
           return { ok: true, summary: summarize(diffBody), failures: [], durationMs: Date.now() - t0 }
         }
         let fullBody: string
+        if (payload.mode === 'deep' && shouldCiDeepReview(payload)) {
+          // CI-deep (mapping is always undefined here — the unmapped block above
+          // returned for every other case): clone the source at the head SHA,
+          // map it in memory, and reuse the mapped machinery reviewer-only.
+          // No govard/vendor linking (ciEnsureWorktree is plain fetch + worktree).
+          const ciHost = process.env.GITLAB_HOST?.trim() || new URL(resolved.gitlabBaseUrl).hostname
+          const cloneDir = join('/tmp', `maestro-ci-src-${payload.projectId}-${payload.mrIid}`)
+          await cloneSourceRepo({ fetcher: fetch, run: defaultRun, host: ciHost, projectId: payload.projectId, sourceBranch: payload.sourceBranch, headSha: payload.headSha as string, token: resolved.gitlabToken, dir: cloneDir })
+          try {
+            const ciEnsureWorktree = async (repoPath: string, branch: string, pid: number, iid: number, suffix?: string): Promise<string> => {
+              assertSafeBranchName(branch)
+              const wt = join('/tmp', `maestro-mr-${pid}-${iid}${suffix === undefined ? '' : `-${suffix}`}`)
+              await defaultRun('git', ['fetch', '--depth', '50', 'origin', branch], repoPath)
+              await defaultRun('git', ['worktree', 'remove', '--force', wt], repoPath).catch(() => {})
+              await defaultRun('git', ['worktree', 'add', '--detach', '--', wt, payload.headSha as string], repoPath)
+              return wt
+            }
+            fullBody = await runReviewAndAudit(payload, {
+              localRepoPath: cloneDir,
+              ensureWorktree: ciEnsureWorktree,
+              removeWorktree,
+              runReviewer: (worktreePath, p) => runReviewer(worktreePath, p, resolved, payload.reviewProfile ?? 'generic', reviewModelSelection, incrementalBlock),
+              runAuditor: withAuditorDegrade((worktreePath, p) => runAuditor(worktreePath, p, resolved, reviewModelSelection)),
+              postComment,
+              replyToDiscussion,
+              writeFailedReport,
+              gitlabBaseUrl: resolved.gitlabBaseUrl,
+              reviewProfile: payload.reviewProfile ?? 'generic',
+            } as unknown as ReviewAndAuditDeps)
+          } finally {
+            await defaultRun('rm', ['-rf', cloneDir]).catch(() => {})
+          }
+        } else {
+        // Unreachable when mapping is undefined: the unmapped block returned
+        // for every non-CI-deep case, and ciDeep took the branch above.
+        if (mapping === undefined) throw new Error('unreachable: unmapped review without CI-deep decision')
         try {
           fullBody = await runReviewAndAudit(payload, {
             localRepoPath: mapping.localRepoPath,
@@ -1321,6 +1385,7 @@ export function apply(ctx: Context, config: Config): void {
             return { ok: true, summary: branchNote, failures: [], durationMs: Date.now() - t0 }
           }
           throw err
+        }
         }
         await recordReviewFinish(historyId, { status: 'completed', summary: summarize(fullBody) })
         notifyTelegram('completed', summarize(fullBody))
