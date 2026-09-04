@@ -606,6 +606,23 @@ export function withAuditorDegrade(
   }
 }
 
+/**
+ * Auditor instruction. The mapped flow keeps the full environment + test-suite
+ * workflow; the CI flow has no runtime, so the prompt countermands the
+ * auditor preset's environment steps and drops the Environment & Test Suite
+ * section entirely instead of reporting it "blocked".
+ */
+export function buildAuditorPrompt(opts: { staticOnly: boolean }): string {
+  if (!opts.staticOnly) {
+    return 'Audit this merge request\'s performance: bring up the environment, run the test suite, look for regressions, then write a Markdown report and tear the environment down.'
+  }
+  return 'Audit this merge request\'s performance from the static diff and checked-out code only. '
+    + 'No runtime environment exists in this container: ignore the auditor preset\'s environment steps '
+    + '(do not bring anything up, do not run the test suite, do not tear anything down). '
+    + 'Look for regressions by static analysis (diff, dependencies, query/shape risks), then write a Markdown report '
+    + 'and OMIT the Environment & Test Suite section entirely — never report it as blocked.'
+}
+
 export async function runReviewAndAudit(payload: ReviewRequest, deps: ReviewAndAuditDeps): Promise<string> {
   assertSafeId(payload.projectId, 'projectId')
   assertSafeId(payload.mrIid, 'mrIid')
@@ -1104,7 +1121,7 @@ export function apply(ctx: Context, config: Config): void {
     }
   }
 
-  async function runAuditor(worktreePath: string, payload: ReviewRequest, effective: { gitlabBaseUrl: string; gitlabToken: string; botUsername: string }, modelSelection?: ModelSelection): Promise<string> {
+  async function runAuditor(worktreePath: string, payload: ReviewRequest, effective: { gitlabBaseUrl: string; gitlabToken: string; botUsername: string }, modelSelection?: ModelSelection, opts?: { staticOnly?: boolean }): Promise<string> {
     let handle: AgentHandle
     const agentOptions = agentOptionsForModel(modelSelection ?? ctx.agentDefaultModel.currentSelection())
     try {
@@ -1131,7 +1148,7 @@ export function apply(ctx: Context, config: Config): void {
     }
     ctx.sessionTitle.rename(handle.agent.session, `Maestro Auditor — MR !${payload.mrIid} (${payload.projectPath})`)
     try {
-      const prompt = 'Audit this merge request\'s performance: bring up the environment, run the test suite, look for regressions, then write a Markdown report and tear the environment down.'
+      const prompt = buildAuditorPrompt({ staticOnly: opts?.staticOnly === true })
       handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: prompt }], source: { kind: 'user' } }))
       await whenIdleWithTimeout(handle, effectiveAgentTimeoutMs)
       const output = auditorOutputFromSession(handle.agent.session)
@@ -1340,7 +1357,7 @@ export function apply(ctx: Context, config: Config): void {
               ensureWorktree: ciEnsureWorktree,
               removeWorktree,
               runReviewer: (worktreePath, p) => runReviewer(worktreePath, p, resolved, payload.reviewProfile ?? 'generic', reviewModelSelection, incrementalBlock),
-              runAuditor: withAuditorDegrade((worktreePath, p) => runAuditor(worktreePath, p, resolved, reviewModelSelection)),
+              runAuditor: withAuditorDegrade((worktreePath, p) => runAuditor(worktreePath, p, resolved, reviewModelSelection, { staticOnly: true })),
               postComment,
               replyToDiscussion,
               writeFailedReport,
