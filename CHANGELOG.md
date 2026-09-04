@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-09-04
+
+### Added
+
+- Shared review flow for CI: unmapped deep reviews with CI env + head SHA
+  skip the decline/diff-only fallback, clone the source at the head SHA and
+  reuse the mapped machinery with a static-only auditor (no govard runtime).
+  (#69)
+- Review auto-trigger gates: global + per-project config for re-review on
+  push (`autoRereviewOnPush`, default off) and review on reviewer assignment
+  (`autoReviewOnAssign`, default on); per-project rows override globals and
+  inherit when unset. Manual mentions always trigger. (#70, requires
+  `@ddtcorex/dsh-maestro-config-lib@^0.1.6`)
+- CI quick with profile: unmapped quick + non-generic `REVIEW_PROFILE`
+  joins the clone branch reviewer-only (no auditor) instead of diff-only;
+  the comment header carries the profile. (#71)
+
 ## [0.4.0] - 2026-09-04
 
 ### Added
