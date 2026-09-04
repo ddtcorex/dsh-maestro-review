@@ -16,6 +16,10 @@ export interface ReviewRequest extends MrOpenedPayload {
   trigger: 'reviewer-assignment' | 'mention' | 'push'
   mode: ReviewMode
   scope: ReviewScope
+  /** Short (8-char) head-sha hint for `push` triggers, taken from the webhook
+   * body — feeds the in-flight key so two concurrent pushes stop deduping
+   * each other. Absent when the body carries no sha. */
+  pushSha?: string
 }
 
 declare module '@deepseek-ai/cordis' {

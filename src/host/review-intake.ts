@@ -35,6 +35,19 @@ function isMentioned(text: string, botUsername: string): boolean {
   return new RegExp(`(^|[^A-Za-z0-9_.-])@${escaped}(?=$|[^A-Za-z0-9_.-])`, 'i').test(text)
 }
 
+/**
+ * Short head-sha hint for the in-flight key: prefers `last_commit.id`, falls
+ * back to `checkout_sha`. Returns `undefined` when the body carries no sha.
+ */
+function shortPushSha(attributes: JsonRecord): string | undefined {
+  const lastCommit = record(attributes.last_commit)
+  const raw = typeof lastCommit?.id === 'string' ? lastCommit.id
+    : typeof attributes.checkout_sha === 'string' ? attributes.checkout_sha
+    : undefined
+  if (raw === undefined || raw.trim() === '') return undefined
+  return raw.slice(0, 8)
+}
+
 function noteScope(attributes: JsonRecord): ReviewScope | undefined {
   const position = record(attributes.position)
   if (position === undefined) return { kind: 'mr' }
@@ -87,7 +100,7 @@ export function routeGitlabReviewRequest(body: unknown, botUsername: string, opt
     if (options.pushEnabled === true) {
       const hasNewCommits = typeof attributes.oldrev === 'string' && attributes.oldrev !== ''
       if (hasNewCommits) {
-        return { ...payload, trigger: 'push', mode: 'quick', scope: { kind: 'mr' } }
+        return { ...payload, trigger: 'push', mode: 'quick', scope: { kind: 'mr' }, pushSha: shortPushSha(attributes) }
       }
     }
 

@@ -125,3 +125,23 @@ describe('D1 signals timeout', () => {
     await pending
   }, 10_000)
 })
+
+describe('D4 in-flight key', () => {
+  const base = {
+    projectId: 1345, projectPath: 'app/onlylyon/visiterlyon', mrIid: 30,
+    sourceBranch: 'maestro/e2e-push-gate-mtm6b71c',
+    trigger: 'push' as const, mode: 'quick' as const, scope: { kind: 'mr' as const },
+  }
+  it('different shas do not share a key', async () => {
+    const { reviewKeyHash } = await import('../src/host/orchestrator.js')
+    expect(reviewKeyHash({ ...base, pushSha: '7cdbfe08' })).not.toBe(reviewKeyHash({ ...base, pushSha: 'bb9ef659' }))
+  })
+  it('same sha still dedupes', async () => {
+    const { reviewKeyHash } = await import('../src/host/orchestrator.js')
+    expect(reviewKeyHash({ ...base, pushSha: '7cdbfe08' })).toBe(reviewKeyHash({ ...base, pushSha: '7cdbfe08' }))
+  })
+  it('trigger separates push from assignment on the same MR', async () => {
+    const { reviewKeyHash } = await import('../src/host/orchestrator.js')
+    expect(reviewKeyHash({ ...base })).not.toBe(reviewKeyHash({ ...base, trigger: 'reviewer-assignment' }))
+  })
+})

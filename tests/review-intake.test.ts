@@ -47,3 +47,28 @@ describe('review-intake: deep mode trigger', () => {
     expect(routeGitlabReviewRequest(noteBody('deep review'), BOT)).toBeUndefined()
   })
 })
+
+function pushWithSha(sha: string | undefined) {
+  const lastCommit = sha === undefined ? {} : { last_commit: { id: sha }, checkout_sha: sha }
+  return {
+    object_kind: 'merge_request',
+    project: { id: 1345, path_with_namespace: 'app/onlylyon/visiterlyon' },
+    object_attributes: {
+      iid: 30, action: 'update', source_branch: 'maestro/e2e-push-gate-mtm6b71c',
+      oldrev: 'aaa', ...lastCommit,
+    },
+  }
+}
+
+describe('D4 push sha routing', () => {
+  it('carries the short sha on push requests', () => {
+    const req = routeGitlabReviewRequest(pushWithSha('7cdbfe08f'), BOT, { pushEnabled: true })
+    expect(req?.trigger).toBe('push')
+    expect(req?.pushSha).toBe('7cdbfe08')
+  })
+  it('omits pushSha when the body carries no sha', () => {
+    const req = routeGitlabReviewRequest(pushWithSha(undefined), BOT, { pushEnabled: true })
+    expect(req?.trigger).toBe('push')
+    expect(req?.pushSha ?? '').toBe('')
+  })
+})

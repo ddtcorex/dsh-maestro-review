@@ -491,7 +491,8 @@ const inFlightKeys = new Set<string>()
 
 function reviewKey(payload: ReviewRequest): string {
   const scope = payload.scope.kind === 'mr' ? 'mr' : `discussion:${payload.scope.discussionId}`
-  return `${payload.projectId}:${payload.mrIid}:${payload.mode}:${scope}`
+  const sha = typeof payload.pushSha === 'string' && payload.pushSha !== '' ? `:${payload.pushSha}` : ''
+  return `${payload.projectId}:${payload.mrIid}:${payload.mode}:${scope}:${payload.trigger}${sha}`
 }
 
 /**
@@ -550,7 +551,10 @@ export async function runReviewAndAudit(payload: ReviewRequest, deps: ReviewAndA
   assertSafeId(payload.projectId, 'projectId')
   assertSafeId(payload.mrIid, 'mrIid')
   const key = reviewKey(payload)
-  if (inFlightKeys.has(key)) return ''
+  if (inFlightKeys.has(key)) {
+    console.error(`maestro-orchestrator: deduped duplicate in-flight review key=${key} trigger=${payload.trigger}`)
+    return ''
+  }
   inFlightKeys.add(key)
   try {
     const worktreePath = await deps.ensureWorktree(deps.localRepoPath, payload.sourceBranch, payload.projectId, payload.mrIid, reviewKeyHash(payload))
@@ -619,7 +623,10 @@ export async function runDiffOnlyReview(payload: ReviewRequest, deps: DiffOnlyRe
   assertSafeId(payload.projectId, 'projectId')
   assertSafeId(payload.mrIid, 'mrIid')
   const key = reviewKey(payload)
-  if (inFlightKeys.has(key)) return ''
+  if (inFlightKeys.has(key)) {
+    console.error(`maestro-orchestrator: deduped duplicate in-flight review key=${key} trigger=${payload.trigger}`)
+    return ''
+  }
   inFlightKeys.add(key)
   try {
     const { summary, failures } = await deps.runReviewer(payload)
@@ -652,7 +659,10 @@ export async function declineUnmappedDeepReview(payload: ReviewRequest, deps: Re
   assertSafeId(payload.projectId, 'projectId')
   assertSafeId(payload.mrIid, 'mrIid')
   const key = reviewKey(payload)
-  if (inFlightKeys.has(key)) return
+  if (inFlightKeys.has(key)) {
+    console.error(`maestro-orchestrator: deduped duplicate in-flight review key=${key} trigger=${payload.trigger}`)
+    return
+  }
   inFlightKeys.add(key)
   const depsWithUrl = deps as unknown as { gitlabBaseUrl?: string; projectPath?: string }
   const baseUrl = depsWithUrl.gitlabBaseUrl
@@ -1262,6 +1272,12 @@ export function apply(ctx: Context, config: Config): void {
               writeFailedReport,
               gitlabBaseUrl: resolved.gitlabBaseUrl,
             } as unknown as DiffOnlyReviewDeps)
+            if (diffBody === '') {
+              console.error(`maestro-orchestrator: deduped duplicate in-flight review project=${payload.projectPath} mr=!${payload.mrIid} trigger=${payload.trigger}`)
+              await recordReviewFinish(historyId, { status: 'completed', summary: 'Duplicate in-flight review deduped — see the active run.' })
+              await signals?.finish('completed')
+              return
+            }
             const summary = summarize(diffBody)
             const branchNote = `fallback diff-only: branch ${payload.sourceBranch} not found on origin — ${summary ?? ''}`.trim()
             await recordReviewFinish(historyId, { status: 'completed', summary: branchNote })
@@ -1270,6 +1286,12 @@ export function apply(ctx: Context, config: Config): void {
             return
           }
           throw err
+        }
+        if (fullBody === '') {
+          console.error(`maestro-orchestrator: deduped duplicate in-flight review project=${payload.projectPath} mr=!${payload.mrIid} trigger=${payload.trigger}`)
+          await recordReviewFinish(historyId, { status: 'completed', summary: 'Duplicate in-flight review deduped — see the active run.' })
+          await signals?.finish('completed')
+          return
         }
         await recordReviewFinish(historyId, { status: 'completed', summary: summarize(fullBody) })
         notifyTelegram('completed', summarize(fullBody))
