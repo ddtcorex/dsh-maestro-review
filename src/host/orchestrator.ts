@@ -234,7 +234,7 @@ export function getTurnErrorMessage(handle: unknown): string | undefined {
  */
 export function resolveReviewModel(
   userConfig: MaestroUserConfig,
-  mapping: { reviewModel?: ReviewModelSelection | null } & Record<string, unknown> | undefined,
+  mapping: { reviewModel?: ReviewModelSelection | null; projectPath?: string } | undefined,
   fallback: ModelSelection,
 ): ModelSelection {
   const raw = (mapping?.reviewModel as ReviewModelSelection | null | undefined) ?? userConfig.reviewModel

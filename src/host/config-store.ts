@@ -14,17 +14,30 @@ export interface ReviewModelSelection {
   reasoningEffort?: string
 }
 
+export interface ProjectMapping {
+  projectPath: string
+  localRepoPath: string
+  reviewProfile?: ReviewSkillProfile
+  reviewModel?: ReviewModelSelection
+  /** Per-project override of autoRereviewOnPush (undefined = inherit global). */
+  rereviewOnPush?: boolean
+  /** Per-project override of autoReviewOnAssign (undefined = inherit global). */
+  reviewOnAssign?: boolean
+}
+
 export interface MaestroUserConfig {
   gitlabBaseUrl?: string
   gitlabToken?: string
   botUsername?: string
   webhookSecret?: string
   webhookPort?: number
-  projectMappings?: Array<{ projectPath: string; localRepoPath: string; reviewProfile?: ReviewSkillProfile; reviewModel?: ReviewModelSelection }>
+  projectMappings?: Array<ProjectMapping>
   /** Override the DSH default model for automated reviews. When absent the global DSH default is used. */
   reviewModel?: ReviewModelSelection
   /** Re-run a quick review whenever new commits land on a previously reviewed MR. */
   autoRereviewOnPush?: boolean
+  /** Trigger an automatic quick review when the bot is assigned as MR reviewer (default true). */
+  autoReviewOnAssign?: boolean
   /** Bound one automated review agent's turn. */
   agentTimeoutMs?: number
   /** Prune Maestro's own review records older than this many days (0 = keep forever). */

@@ -52,4 +52,14 @@ describe('config-store v2 (lib-backed adapter)', () => {
     const st = await stat(join(home, 'dsh-maestro-review', 'runtime.json'))
     expect(st.mode & 0o777).toBe(0o600)
   })
+
+  it('round-trips the trigger flags (global + per-row)', async () => {
+    await saveUserConfig({
+      autoReviewOnAssign: false,
+      projectMappings: [{ projectPath: 'g/p', localRepoPath: '/x', rereviewOnPush: true, reviewOnAssign: false }],
+    }, home)
+    const cfg = await loadUserConfig(home)
+    expect(cfg.autoReviewOnAssign).toBe(false)
+    expect(cfg.projectMappings?.[0]).toEqual({ projectPath: 'g/p', localRepoPath: '/x', rereviewOnPush: true, reviewOnAssign: false })
+  })
 })
