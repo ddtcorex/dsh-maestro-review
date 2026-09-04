@@ -4,7 +4,7 @@ import z from '@deepseek-ai/schemastery'
 import { loadUserConfig } from '../config-store.js'
 import { secretsMatch } from '../secure-compare.js'
 import type { MrOpenedPayload, ReviewRequest as OrchestratorReviewRequest } from '../events.js'
-import { routeGitlabReviewRequest } from '../review-intake.js'
+import { describeDrop, routeGitlabReviewRequest } from '../review-intake.js'
 import type { ReviewProvider, ReviewRequest } from './interface.js'
 
 export const name = 'maestro-review-webhook'
@@ -127,10 +127,24 @@ export function apply(ctx: Context, config: Config): void {
         }
         let body: GitlabMrWebhookBody; try { body = JSON.parse(raw) } catch { res.writeHead(400).end(); return }
         const userConfig = await loadUserConfig()
-        if ((body.object_kind === 'merge_request' || body.object_kind === 'note') && !hasValidGitlabMrIdentity(body)) { res.writeHead(400).end(); return }
-        // The orchestrator is the sole push gate (resolveReviewTriggers); intake always emits.
-        const request = routeGitlabReviewRequest(body, userConfig.botUsername ?? config.botUsername ?? 'maestro', { pushEnabled: true })
-        if (request !== undefined) ctx.emit('maestro/review-request', request)
+        const botUsername = userConfig.botUsername ?? config.botUsername ?? 'maestro'
+        if ((body.object_kind === 'merge_request' || body.object_kind === 'note') && !hasValidGitlabMrIdentity(body)) {
+          console.error(`maestro-review-webhook: drop invalid-identity object_kind=${(body as { object_kind?: unknown }).object_kind ?? 'unknown'}`)
+          res.writeHead(400).end(); return
+        }
+        // The orchestrator is the sole push gate (resolveReviewTriggers);
+        // intake always emits so per-project overrides keep working.
+        const request = routeGitlabReviewRequest(body, botUsername, { pushEnabled: true })
+        if (request === undefined) {
+          const reason = describeDrop(body, botUsername, { pushEnabled: true })
+          if (reason !== undefined) {
+            const project = (body as { project?: { path_with_namespace?: unknown } }).project
+            const source = (body as { object_attributes?: { iid?: unknown } }).object_attributes
+            console.error(`maestro-review-webhook: drop ${reason} project=${typeof project?.path_with_namespace === 'string' ? project.path_with_namespace : 'unknown'} mr=!${typeof source?.iid === 'number' ? source.iid : '?'}`)
+          }
+        } else {
+          ctx.emit('maestro/review-request', request)
+        }
         res.writeHead(200).end()
       })
     }

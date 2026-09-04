@@ -30,6 +30,10 @@ export interface ReviewRequest extends MrOpenedPayload {
    * webhook producer never sets it — webhook comments stay marker-free.
    */
   headSha?: string
+  /** Short (8-char) head-sha hint for `push` triggers, taken from the webhook
+   * body — feeds the in-flight key so two concurrent pushes stop deduping
+   * each other. Absent when the body carries no sha. */
+  pushSha?: string
 }
 
 export interface ReviewResult {
