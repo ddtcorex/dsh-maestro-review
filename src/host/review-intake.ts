@@ -49,6 +49,28 @@ export interface RouteOptions {
   pushEnabled?: boolean
 }
 
+/** Actionable provider-layer drop reasons. Generic non-review GitLab noise
+ * (closes, label edits, ...) intentionally has no reason and stays silent. */
+export type DropReason = 'invalid-identity' | 'push-gate-off'
+
+/**
+ * Name why this webhook body will NOT route at the provider layer, or
+ * `undefined` when it routes (or is generic noise the provider ignores).
+ * Pure — the provider logs the returned reason with project/mr context.
+ */
+export function describeDrop(body: unknown, botUsername: string, options: RouteOptions = {}): DropReason | undefined {
+  const value = record(body)
+  if (value === undefined || botUsername.trim() === '') return 'invalid-identity'
+  const payload = mrPayload(value)
+  if (payload === undefined) return 'invalid-identity'
+  if (value.object_kind === 'merge_request') {
+    const attributes = record(value.object_attributes)
+    const hasNewCommits = typeof attributes?.oldrev === 'string' && attributes.oldrev !== ''
+    if (hasNewCommits && options.pushEnabled !== true) return 'push-gate-off'
+  }
+  return undefined
+}
+
 export function routeGitlabReviewRequest(body: unknown, botUsername: string, options: RouteOptions = {}): ReviewRequest | undefined {
   const value = record(body)
   if (value === undefined || botUsername.trim() === '') return undefined

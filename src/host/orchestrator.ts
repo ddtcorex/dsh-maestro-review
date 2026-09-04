@@ -1098,13 +1098,19 @@ export function apply(ctx: Context, config: Config): void {
       const mapping = effective.projectMappings.find(m => m.projectPath === payload.projectPath)
       // Unmapped reviewer assignments remain no-ops. Only an explicit mention
       // may opt into the intentionally limited, diff-only fallback below.
-      if (mapping === undefined && payload.trigger !== 'mention') return
+      if (mapping === undefined && payload.trigger !== 'mention') {
+        console.error(`maestro-orchestrator: drop unmapped-assignment project=${payload.projectPath} mr=!${payload.mrIid} trigger=${payload.trigger}`)
+        return
+      }
       // A push only re-reviews an MR that already has a completed review;
       // otherwise every newly opened MR would be reviewed twice.
-      if (payload.trigger === 'push' && !(await hasCompletedReview(payload.projectId, payload.mrIid))) return
+      if (payload.trigger === 'push' && !(await hasCompletedReview(payload.projectId, payload.mrIid))) {
+        console.error(`maestro-orchestrator: drop push-no-completed-history project=${payload.projectPath} mr=!${payload.mrIid} trigger=${payload.trigger}`)
+        return
+      }
       const { gitlabToken } = effective
       if (gitlabToken === undefined) {
-        console.error(`maestro-orchestrator: MR !${String(payload.mrIid)} for project ${payload.projectPath} has no GitLab token — set one in Maestro Settings or MAESTRO_GITLAB_TOKEN`)
+        console.error(`maestro-orchestrator: drop missing-token project=${payload.projectPath} mr=!${String(payload.mrIid)} trigger=${payload.trigger} — set one in Maestro Settings or MAESTRO_GITLAB_TOKEN`)
         return
       }
       const resolved = { ...effective, gitlabToken }
