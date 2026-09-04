@@ -9,7 +9,7 @@ maestro:trigger-review:
   # No image needed, no secrets needed
   trigger:
     project: ddtcorex/maestro-reviewer   # ← reviewer project path
-    branch: main
+    branch: main                          # ← the reviewer project's default branch (master on some instances)
     strategy: depend                      # optional: wait for the reviewer pipeline, surface its status on the MR
   variables:
     SOURCE_PROJECT_ID: $CI_PROJECT_ID
