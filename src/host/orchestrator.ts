@@ -1190,7 +1190,7 @@ export function apply(ctx: Context, config: Config): void {
         : undefined
       await signals?.start()
       const postComment = async (body: string) => {
-        const response = await fetch(
+        const response = await GitlabClient.fetchWithTimeout(
           `${resolved.gitlabBaseUrl}/api/v4/projects/${payload.projectId}/merge_requests/${payload.mrIid}/notes`,
           {
             method: 'POST',
@@ -1201,7 +1201,7 @@ export function apply(ctx: Context, config: Config): void {
         if (!response.ok) throw new Error(`GitLab API error ${response.status}: ${await response.text()}`)
       }
       const replyToDiscussion = async (discussionId: string, body: string) => {
-        const response = await fetch(
+        const response = await GitlabClient.fetchWithTimeout(
           `${resolved.gitlabBaseUrl}/api/v4/projects/${payload.projectId}/merge_requests/${payload.mrIid}/discussions/${encodeURIComponent(discussionId)}/notes`,
           {
             method: 'POST',
