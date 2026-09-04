@@ -114,6 +114,53 @@ describe('CI deep review', () => {
       expect(text).not.toMatch(/declined/)
     } finally { clearCiEnv() }
   }, 30000)
+
+  it('shouldCiQuickProfileReview is true only for quick + non-generic profile + CI env + headSha', async () => {
+    const { shouldCiQuickProfileReview } = await import('../src/host/orchestrator.js')
+    setCiEnv()
+    try {
+      expect(shouldCiQuickProfileReview({ mode: 'quick', reviewProfile: 'magento2', headSha: 'abc' } as any)).toBe(true)
+      expect(shouldCiQuickProfileReview({ mode: 'quick', headSha: 'abc' } as any)).toBe(false)
+      expect(shouldCiQuickProfileReview({ mode: 'quick', reviewProfile: 'generic', headSha: 'abc' } as any)).toBe(false)
+      expect(shouldCiQuickProfileReview({ mode: 'deep', reviewProfile: 'magento2', headSha: 'abc' } as any)).toBe(false)
+      expect(shouldCiQuickProfileReview({ mode: 'quick', reviewProfile: 'magento2' } as any)).toBe(false)
+    } finally { clearCiEnv() }
+    expect(shouldCiQuickProfileReview({ mode: 'quick', reviewProfile: 'magento2', headSha: 'abc' } as any)).toBe(false)
+  })
+
+  it('runReview clones for quick + profile instead of diff-only', async () => {
+    const { apply } = await import('../src/host/orchestrator.js')
+    const { cloneSourceRepo } = await import('../src/host/ci-clone.js')
+    setCiEnv()
+    try {
+      vi.mocked(cloneSourceRepo).mockClear()
+      let runReview: ((payload: any) => Promise<any>) | undefined
+      apply({ on: () => {}, provide: (name: string, fn: any) => { if (name === 'reviewRunner') runReview = fn } } as any,
+        { projectMappings: [], gitlabBaseUrl: 'https://gitlab.example.com', botUsername: 'b', agentTimeoutMs: 1000, gitlabToken: 't' })
+      await runReview!({
+        projectPath: 'group/proj', projectId: 1, mrIid: 2, sourceBranch: 'feat/x', headSha: 'abc123',
+        trigger: 'mention', mode: 'quick', reviewProfile: 'magento2', scope: { kind: 'mr' },
+      }).catch(() => {})
+      expect(cloneSourceRepo).toHaveBeenCalledWith(expect.objectContaining({ projectId: 1, headSha: 'abc123', token: 't' }))
+    } finally { clearCiEnv() }
+  }, 30000)
+
+  it('runReview stays diff-only for quick + generic profile (no clone)', async () => {
+    const { apply } = await import('../src/host/orchestrator.js')
+    const { cloneSourceRepo } = await import('../src/host/ci-clone.js')
+    setCiEnv()
+    try {
+      vi.mocked(cloneSourceRepo).mockClear()
+      let runReview: ((payload: any) => Promise<any>) | undefined
+      apply({ on: () => {}, provide: (name: string, fn: any) => { if (name === 'reviewRunner') runReview = fn } } as any,
+        { projectMappings: [], gitlabBaseUrl: 'https://gitlab.example.com', botUsername: 'b', agentTimeoutMs: 1000, gitlabToken: 't' })
+      await runReview!({
+        projectPath: 'group/proj', projectId: 1, mrIid: 2, sourceBranch: 'feat/x', headSha: 'abc123',
+        trigger: 'mention', mode: 'quick', reviewProfile: 'generic', scope: { kind: 'mr' },
+      }).catch(() => {})
+      expect(cloneSourceRepo).not.toHaveBeenCalled()
+    } finally { clearCiEnv() }
+  }, 30000)
 })
 
 describe('resolveReviewModel — row-config reviewModel', () => {  it('uses the row selection when mapping and user config are absent (CI profile case)', async () => {

@@ -593,6 +593,19 @@ export function shouldCiDeepReview(payload: ReviewRequest): boolean {
     && process.env.MR_IID !== undefined
 }
 
+/** CI quick-with-profile decision: quick mode + non-generic profile + CI env
+ *  + head SHA. Quick + generic/unset stays diff-only (no clone cost); a real
+ *  profile opts into the clone branch reviewer-only (no auditor — quick never
+ *  audits, see shouldAudit in runReviewAndAudit). Mapping is checked by the caller. */
+export function shouldCiQuickProfileReview(payload: ReviewRequest): boolean {
+  return payload.mode === 'quick'
+    && payload.reviewProfile !== undefined
+    && payload.reviewProfile !== 'generic'
+    && payload.headSha !== undefined
+    && process.env.SOURCE_PROJECT_ID !== undefined
+    && process.env.MR_IID !== undefined
+}
+
 /** Auditor degrade for CI (no runtime env): a govard throw becomes reviewer-only, never a failed review. */
 export function withAuditorDegrade(
   runAuditor: (worktreePath: string, payload: ReviewRequest) => Promise<string>,
@@ -1183,6 +1196,10 @@ export function apply(ctx: Context, config: Config): void {
       // both the decline and the diff-only fallback and runs the clone branch
       // below, which shares the mapped path's completion tail.
       const ciDeep = mapping === undefined && payload.mode === 'deep' && shouldCiDeepReview(payload)
+      // CI quick-with-profile: unmapped quick + non-generic profile + CI env
+      // skips the diff-only fallback and joins the clone branch below, which
+      // runs reviewer-only (quick never audits).
+      const ciQuickProfile = mapping === undefined && shouldCiQuickProfileReview(payload)
       // Unmapped reviewer assignments remain no-ops. Only an explicit mention
       // may opt into the intentionally limited, diff-only fallback below.
       if (mapping === undefined && payload.trigger !== 'mention') {
@@ -1312,7 +1329,7 @@ export function apply(ctx: Context, config: Config): void {
         if (!response.ok) throw new Error(`GitLab API error ${response.status}: ${await response.text()}`)
       }
       try {
-        if (mapping === undefined && !ciDeep) {
+        if (mapping === undefined && !ciDeep && !ciQuickProfile) {
           // CI-deep (spec §3) skips the decline and falls through to the clone
           // branch below; every other unmapped deep review still declines here.
           if (payload.mode === 'deep' && !shouldCiDeepReview(payload)) {
@@ -1335,10 +1352,12 @@ export function apply(ctx: Context, config: Config): void {
           return { ok: true, summary: summarize(diffBody), failures: [], durationMs: Date.now() - t0 }
         }
         let fullBody: string
-        if (payload.mode === 'deep' && shouldCiDeepReview(payload)) {
+        if (ciDeep || ciQuickProfile) {
           // CI-deep (mapping is always undefined here — the unmapped block above
           // returned for every other case): clone the source at the head SHA,
           // map it in memory, and reuse the mapped machinery reviewer-only.
+          // CI quick-with-profile joins the same branch; runReviewAndAudit skips
+          // the auditor for quick (shouldAudit), so it stays reviewer-only.
           // No govard/vendor linking (ciEnsureWorktree is plain fetch + worktree).
           const ciHost = process.env.GITLAB_HOST?.trim() || new URL(resolved.gitlabBaseUrl).hostname
           const cloneDir = join('/tmp', `maestro-ci-src-${payload.projectId}-${payload.mrIid}`)
