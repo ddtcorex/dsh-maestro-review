@@ -115,6 +115,7 @@ export async function runCiTrigger(
       projectId: config.sourceProjectId,
       mrIid: config.mrIid,
       sourceBranch,
+      headSha,
       trigger: 'mention',
       mode: config.mode,
       scope: { kind: 'mr' },

@@ -24,6 +24,12 @@ export interface ReviewRequest extends MrOpenedPayload {
    * Undefined preserves the legacy diff-only generic review.
    */
   reviewProfile?: ReviewSkillProfile
+  /**
+   * CI-only: MR head SHA from fetchMrDetail (ci-trigger sets it). Feeds the
+   * comment marker so later CI runs can yield to this review. The GitLab
+   * webhook producer never sets it — webhook comments stay marker-free.
+   */
+  headSha?: string
 }
 
 export interface ReviewResult {

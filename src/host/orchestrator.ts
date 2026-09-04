@@ -41,7 +41,7 @@ import type { ReviewProvider } from './providers/interface.js'
 import { gitlabProvider } from './providers/gitlab.js'
 import './events.js'
 import { gitlabAuthHeaders } from './gitlab-auth.js'
-import { reviewMarker, type ReviewFlow } from './review-marker.js'
+import { reviewMarker, resolveFlow, type ReviewFlow } from './review-marker.js'
 
 // Provider-aware wrapper — orchestrator can run reviews via any ReviewProvider.
 // This keeps the GitLab-specific flow intact while allowing Phase C to add GitHub/Jira without modifying core logic.
@@ -578,6 +578,12 @@ export function auditorOutputFromSession(session: unknown) {
 }
 
 /** Full review + performance audit; resolves to the comment body that was posted. */
+/** Marker for CI-posted comments; webhook payloads carry no headSha and stay marker-free. */
+function commentMarker(payload: ReviewRequest): { sha: string; flow: ReviewFlow } | undefined {
+  if (payload.headSha === undefined) return undefined
+  return { sha: payload.headSha, flow: resolveFlow(payload.mode) }
+}
+
 export async function runReviewAndAudit(payload: ReviewRequest, deps: ReviewAndAuditDeps): Promise<string> {
   assertSafeId(payload.projectId, 'projectId')
   assertSafeId(payload.mrIid, 'mrIid')
@@ -613,6 +619,7 @@ export async function runReviewAndAudit(payload: ReviewRequest, deps: ReviewAndA
               summary: summaryText,
               failures,
               findings: { newCount, replyCount, severityCounts },
+              marker: commentMarker(payload),
             })
           : `## 🤖 Maestro Review\n\n**\`${payload.projectPath}\` !${payload.mrIid}** · ✅ Completed · \`${payload.mode}\`${(deps as unknown as { reviewProfile?: string }).reviewProfile !== undefined ? ` · \`${(deps as unknown as { reviewProfile: string }).reviewProfile}\`` : ''}\n\n${summaryText}${failures.length > 0 ? `\n\n<details>\n<summary>⚠️ Failed to post (${failures.length})</summary>\n\n${failures.map((f) => `- \`${f}\``).join('\n')}\n\n</details>` : ''}`
         sections.push(richOpts)
@@ -665,6 +672,7 @@ export async function runDiffOnlyReview(payload: ReviewRequest, deps: DiffOnlyRe
           summary: summary ?? '',
           failures,
           isDiffOnly: true,
+          marker: commentMarker(payload),
         })
       : `## 🤖 Maestro Review — Diff-only\n\n> **Scope:** Diff-only — reviewed the GitLab diff without a local checkout, Magento environment, static analysis, or tests. For a full review, add this project in Settings → Maestro and mention again.\n\n${summary}${failures.length > 0 ? `\n\n<details>\n<summary>⚠️ Failed to post (${failures.length})</summary>\n\n${failures.map((f) => `- \`${f}\``).join('\n')}\n\n</details>` : ''}`
     const body = diffBody
@@ -691,7 +699,7 @@ export async function declineUnmappedDeepReview(payload: ReviewRequest, deps: Re
   const depsWithUrl = deps as unknown as { gitlabBaseUrl?: string; projectPath?: string }
   const baseUrl = depsWithUrl.gitlabBaseUrl
   const body = baseUrl !== undefined
-    ? buildNotStartedComment({ gitlabBaseUrl: baseUrl, projectPath: payload.projectPath, mrIid: payload.mrIid })
+    ? buildNotStartedComment({ gitlabBaseUrl: baseUrl, projectPath: payload.projectPath, mrIid: payload.mrIid, marker: commentMarker(payload) })
     : '## 🤖 Maestro Review — Not started\n\n**`' + payload.projectPath + '` !' + payload.mrIid + '** · ⏸️ Not started\n\n> Deep review requires a project mapping with a local checkout and Magento environment.\n> Add this project in **Settings → Maestro**, then mention the reviewer again.'
   try {
     try {

@@ -160,6 +160,23 @@ describe('runCiTrigger coexistence yield', () => {
     const { ran } = await runYield('abc123', [], [])
     expect(ran).toBe(true)
   })
+
+  it('threads headSha into the review request', async () => {
+    const { parseCiEnvConfig, runCiTrigger } = await import('../src/host/providers/ci-trigger.js')
+    const cfg = parseCiEnvConfig({ GITLAB_HOST: 'h', MAESTRO_GITLAB_TOKEN: 'tok', SOURCE_PROJECT_ID: '1', MR_IID: '2' })
+    const fetcher = vi.fn(async (url: string) => {
+      if (String(url).includes('/notes')) return new Response('[]', { status: 200 })
+      if (String(url).includes('/award_emoji')) return new Response('[]', { status: 200 })
+      return new Response(JSON.stringify({ source_branch: 'feat/x', sha: 'abc123' }), { status: 200 })
+    })
+    const fakeCtx = { reviewRunner: vi.fn(async () => ({ ok: true, summary: 'done', failures: [], durationMs: 5 })) }
+    await runCiTrigger(fakeCtx as any, cfg, {
+      fetcher: fetcher as unknown as typeof fetch,
+      writeFile: fakeWriteFile,
+      history: { lastCompletedReview: vi.fn(async () => undefined) },
+    })
+    expect(fakeCtx.reviewRunner).toHaveBeenCalledWith(expect.objectContaining({ headSha: 'abc123' }))
+  })
 })
 
 describe('fetchMrSourceBranch', () => {
@@ -188,7 +205,7 @@ describe('runCiTrigger', () => {
     const fakeWriteFile = (async (path: string, data: string) => { writes.push([path, data]) }) as unknown as typeof import('node:fs/promises').writeFile
     const result = await runCiTrigger(fakeCtx as any, cfg, { fetcher: fetcher as unknown as typeof fetch, writeFile: fakeWriteFile })
     expect(capturedRequest).toEqual({
-      projectPath: 'project/1', projectId: 1, mrIid: 2, sourceBranch: 'feat/x',
+      projectPath: 'project/1', projectId: 1, mrIid: 2, sourceBranch: 'feat/x', headSha: 'abc123',
       trigger: 'mention', mode: 'quick', scope: { kind: 'mr' },
     })
     expect(result.ok).toBe(true)
@@ -222,7 +239,7 @@ describe('runCiTrigger', () => {
     const fakeWriteFile = (async () => {}) as unknown as typeof import('node:fs/promises').writeFile
     await runCiTrigger(fakeCtx as any, cfg, { fetcher: fetcher as unknown as typeof fetch, writeFile: fakeWriteFile })
     expect(capturedRequest).toEqual({
-      projectPath: 'project/1', projectId: 1, mrIid: 2, sourceBranch: 'feat/x',
+      projectPath: 'project/1', projectId: 1, mrIid: 2, sourceBranch: 'feat/x', headSha: 'abc123',
       trigger: 'mention', mode: 'quick', scope: { kind: 'mr' }, reviewProfile: 'magento2',
     })
   })
