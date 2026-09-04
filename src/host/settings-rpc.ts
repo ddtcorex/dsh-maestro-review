@@ -12,7 +12,7 @@ export const inject = ['connection', 'maestroTunnel']
 /** Keys the Settings card may persist; anything else is a rejected save. */
 const SAVABLE_KEYS = new Set<keyof MaestroUserConfig>([
   'gitlabBaseUrl', 'gitlabToken', 'botUsername', 'webhookSecret', 'webhookPort',
-  'projectMappings', 'reviewModel', 'autoRereviewOnPush', 'agentTimeoutMs', 'reviewSessionRetentionDays',
+  'projectMappings', 'reviewModel', 'autoRereviewOnPush', 'autoReviewOnAssign', 'agentTimeoutMs', 'reviewSessionRetentionDays',
   'tunnelMode', 'quickTarget', 'tunnelId', 'tunnelCredentialsFile', 'tunnelHostname',
   'proxyPort', 'proxyHost', 'lanPinEnabled', 'telegramBotToken', 'telegramChatId',
   'telegramReviewNotifications',

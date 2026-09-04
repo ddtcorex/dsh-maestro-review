@@ -31,7 +31,7 @@ import * as PerfLogStatsTool from './perf-log-stats-tool.js'
 import * as ReviewToolPolicy from './tool-policy.js'
 import type { ReviewFinding, FindingSeverity } from './review-findings-tool.js'
 import type { ReviewRequest } from './events.js'
-import { loadUserConfig, type MaestroUserConfig, type ReviewModelSelection } from './config-store.js'
+import { loadUserConfig, type MaestroUserConfig, type ProjectMapping, type ReviewModelSelection } from './config-store.js'
 import { hasCompletedReview, lastCompletedReview, pruneHistory, recordReviewFinish, recordReviewStart } from './review-history.js'
 import { buildIncrementalBlock, fetchCompare, fetchMrDetailHeadSha } from './incremental.js'
 import { createReviewSignals } from './review-signals.js'
@@ -234,7 +234,7 @@ export function getTurnErrorMessage(handle: unknown): string | undefined {
  */
 export function resolveReviewModel(
   userConfig: MaestroUserConfig,
-  mapping: { reviewModel?: ReviewModelSelection | null } & Record<string, unknown> | undefined,
+  mapping: { reviewModel?: ReviewModelSelection | null; projectPath?: string } | undefined,
   fallback: ModelSelection,
 ): ModelSelection {
   const raw = (mapping?.reviewModel as ReviewModelSelection | null | undefined) ?? userConfig.reviewModel
@@ -243,6 +243,17 @@ export function resolveReviewModel(
     provider: raw.provider,
     model: raw.model,
     ...(raw.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(raw.reasoningEffort) }),
+  }
+}
+
+/** Effective auto-trigger flags: per-project row overrides global, unset inherits (design §4). */
+export function resolveReviewTriggers(
+  userConfig: MaestroUserConfig,
+  mapping?: ProjectMapping,
+): { onPush: boolean; onAssign: boolean } {
+  return {
+    onPush: mapping?.rereviewOnPush ?? userConfig.autoRereviewOnPush ?? false,
+    onAssign: mapping?.reviewOnAssign ?? userConfig.autoReviewOnAssign ?? true,
   }
 }
 
@@ -1099,6 +1110,10 @@ export function apply(ctx: Context, config: Config): void {
       // Unmapped reviewer assignments remain no-ops. Only an explicit mention
       // may opt into the intentionally limited, diff-only fallback below.
       if (mapping === undefined && payload.trigger !== 'mention') return
+      const triggers = resolveReviewTriggers(userConfig, mapping)
+      // Gated-off auto-triggers stay fully silent: no history, no signals, no comment.
+      if (payload.trigger === 'reviewer-assignment' && !triggers.onAssign) return
+      if (payload.trigger === 'push' && !triggers.onPush) return
       // A push only re-reviews an MR that already has a completed review;
       // otherwise every newly opened MR would be reviewed twice.
       if (payload.trigger === 'push' && !(await hasCompletedReview(payload.projectId, payload.mrIid))) return
