@@ -13,7 +13,8 @@ review:
   rules:
     - if: $CI_PIPELINE_SOURCE == "pipeline"          # bridge trigger
     - if: $CI_PIPELINE_SOURCE == "trigger"           # token trigger
-    - if: $CI_PIPELINE_SOURCE == "web" when: manual  # manual retry
+    - if: $CI_PIPELINE_SOURCE == "web"               # manual retry
+      when: manual
   variables:
     GIT_STRATEGY: none   # no need to check out the reviewer repo
   # Every parameter comes from env (SOURCE_PROJECT_ID, MR_IID, GITLAB_HOST, REVIEW_MODE) — no CLI args.
