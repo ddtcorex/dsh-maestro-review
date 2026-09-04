@@ -7,6 +7,17 @@
 # printed "Scope: all 2 workspace projects" and resolved relative to `../..`
 # without this file present).
 packages: []
+# Postinstall scripts required at runtime (node-pty/subprocess-local spawn
+# agents, koffi/protobufjs/genai serve model IO). Exact versions pinned in
+# pnpm-lock.yaml; review on every profile dep bump.
+allowBuilds:
+  '@deepseek-ai/dsh-subprocess-local': true
+  '@google/genai': true
+  koffi: true
+  node-pty: true
+  protobufjs: true
 minimumReleaseAgeExclude:
   - '@ddtcorex/dsh-maestro-review@0.3.1'
   - '@ddtcorex/maestro-skills@2.11.0'
+  - '@ddtcorex/dsh-maestro-review@0.5.1'
+  - '@ddtcorex/maestro-skills@2.11.1'

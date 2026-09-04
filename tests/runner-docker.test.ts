@@ -2,17 +2,18 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 
 describe('docker', () => {
-  it('Dockerfile copies deepseek-harness source and installs it (dsh runs from source, not lib/)', () => {
+  it('Dockerfile installs everything from registries (no host-checkout COPY)', () => {
     const df = readFileSync('docker/Dockerfile', 'utf-8')
     expect(df).toMatch(/ARG NODE_VERSION=22/)
-    expect(df).toMatch(/FROM node:\$\{NODE_VERSION\}-slim AS builder/)
-    expect(df).toMatch(/COPY deepseek-harness deepseek-harness/)
-    expect(df).toMatch(/pnpm --dir deepseek-harness install/)
-    expect(df).toMatch(/COPY packages\/dsh-maestro-config-lib packages\/dsh-maestro-config-lib/)
-    expect(df).toMatch(/pnpm --dir packages\/dsh-maestro-config-lib install --frozen-lockfile/)
-    expect(df).toMatch(/pnpm --dir packages\/dsh-maestro-review install --frozen-lockfile/)
-    expect(df).toMatch(/pnpm --dir deepseek-harness (run )?build:lib/)
-    expect(df).toMatch(/COPY packages\/dsh-maestro-review\/profiles\/reviewer-ci profiles\/reviewer-ci/)
+    expect(df).toMatch(/FROM node:\$\{NODE_VERSION\}-slim AS runtime/)
+    // published DSH CLI, not a source checkout
+    expect(df).toMatch(/npm install -g @deepseek-ai\/dsh@/)
+    expect(df).not.toMatch(/COPY deepseek-harness/)
+    expect(df).not.toMatch(/COPY packages\//)
+    expect(df).not.toMatch(/AS builder/)
+    // profile deps from the registry, frozen install, package-relative COPYs
+    expect(df).toMatch(/COPY profiles\/reviewer-ci \.\/profiles\/reviewer-ci/)
+    expect(df).toMatch(/pnpm --dir profiles\/reviewer-ci .* install --frozen-lockfile/)
     expect(df).toMatch(/ENV DSH_HOME=\/app\s*$/m)
     expect(df).toMatch(/\.agent-presets\/dsh-maestro-reviewer/)
     expect(df).toMatch(/\.agent-presets\/dsh-maestro-auditor/)

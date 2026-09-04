@@ -53,5 +53,6 @@ if grep -q __OPENCODE_MODEL__ /app/settings.yaml 2>/dev/null; then
   sed "s#__OPENCODE_MODEL__#${OPENCODE_MODEL}#g" /app/settings.yaml > /app/settings.yaml.rendered
   mv /app/settings.yaml.rendered /app/settings.yaml
 fi
-cd /app/deepseek-harness
-exec node --import tsx/esm apps/cli/src/bin.ts --profile reviewer-ci
+# Boot the published DSH CLI against the baked reviewer-ci profile
+# ($DSH_HOME/profiles/reviewer-ci).
+exec dsh --profile reviewer-ci
