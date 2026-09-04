@@ -235,6 +235,22 @@ export function getTurnErrorMessage(handle: unknown): string | undefined {
 }
 
 /**
+ * A turn can go idle without ever calling a tool when the model provider
+ * itself rejects the request (auth/billing/rate-limit) — `whenIdleWithTimeout`
+ * only guards against a hang, not this. Left unchecked, the reviewer's
+ * missing-skill-profile check and the auditor's empty-output path both treat
+ * this the same as "the agent just didn't call anything", misreporting a
+ * provider outage as a maestro-skills installation problem (or, for the
+ * auditor, as a silent clean pass). Surface the real turn error immediately.
+ */
+export function assertTurnSucceeded(handle: unknown): void {
+  const turnMsg = getTurnErrorMessage(handle)
+  if (turnMsg !== undefined) {
+    throw new Error(`Review turn failed before completing: ${turnMsg}`)
+  }
+}
+
+/**
  * Resolve the model to use for an automated review. Priority: per-project
  * override > global reviewModel (Maestro Settings) > row-config reviewModel
  * (lets a headless profile such as reviewer-ci pin a model from env vars,
@@ -1081,6 +1097,7 @@ export function apply(ctx: Context, config: Config): void {
           source: { kind: 'user' },
         }))
         await whenIdleWithTimeout(handle, effectiveAgentTimeoutMs)
+        assertTurnSucceeded(handle)
         if (reviewProfile !== undefined && (reviewerContext === undefined || loadedReviewProfile(reviewerContext) !== reviewProfile)) {
           throw new Error(`reviewer did not successfully load the required ${reviewProfile} review skill profile; no findings were posted`)
         }
@@ -1178,6 +1195,7 @@ export function apply(ctx: Context, config: Config): void {
       const prompt = buildAuditorPrompt({ staticOnly: opts?.staticOnly === true })
       handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: prompt }], source: { kind: 'user' } }))
       await whenIdleWithTimeout(handle, effectiveAgentTimeoutMs)
+      assertTurnSucceeded(handle)
       const output = auditorOutputFromSession(handle.agent.session)
       const text = output.map(block => ('text' in block ? block.text : '')).join('')
       return `## Maestro Performance Audit\n\n${text}`
