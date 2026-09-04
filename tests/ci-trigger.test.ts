@@ -125,6 +125,43 @@ describe('runCiTrigger push-gate', () => {
   })
 })
 
+describe('runCiTrigger coexistence yield', () => {
+  const fakeWriteFile = (async () => {}) as unknown as typeof import('node:fs/promises').writeFile
+  async function runYield(sha: string, notesBodies: string[], awards: Array<{ name: string }>) {
+    const { parseCiEnvConfig, runCiTrigger } = await import('../src/host/providers/ci-trigger.js')
+    const cfg = parseCiEnvConfig({ GITLAB_HOST: 'h', MAESTRO_GITLAB_TOKEN: 'tok', SOURCE_PROJECT_ID: '1', MR_IID: '2' })
+    const fetcher = vi.fn(async (url: string) => {
+      if (String(url).includes('/notes')) return new Response(JSON.stringify(notesBodies.map((body, i) => ({ id: i, body }))), { status: 200 })
+      if (String(url).includes('/award_emoji')) return new Response(JSON.stringify(awards.map((a, i) => ({ id: i, ...a }))), { status: 200 })
+      return new Response(JSON.stringify({ source_branch: 'feat/x', sha }), { status: 200 })
+    })
+    const fakeCtx = { reviewRunner: vi.fn(async () => ({ ok: true, summary: 'done', failures: [], durationMs: 5 })) }
+    const history = { lastCompletedReview: vi.fn(async () => undefined) }
+    const result = await runCiTrigger(fakeCtx as any, cfg, {
+      fetcher: fetcher as unknown as typeof fetch, writeFile: fakeWriteFile, history,
+    })
+    return { result, ran: (fakeCtx.reviewRunner as ReturnType<typeof vi.fn>).mock.calls.length > 0 }
+  }
+
+  it('skips when another flow already completed this SHA', async () => {
+    const { result, ran } = await runYield('abc123', ['x <!-- maestro-review sha=abc123 flow=webhook status=completed --> y'], [])
+    expect(ran).toBe(false)
+    expect(result.ok).toBe(true)
+    expect(result.summary).toMatch(/already reviewed/)
+  })
+
+  it('skips when an eyes running marker is present', async () => {
+    const { result, ran } = await runYield('abc123', [], [{ name: 'eyes' }])
+    expect(ran).toBe(false)
+    expect(result.summary).toMatch(/another review is running/)
+  })
+
+  it('runs when no marker and no eyes', async () => {
+    const { ran } = await runYield('abc123', [], [])
+    expect(ran).toBe(true)
+  })
+})
+
 describe('fetchMrSourceBranch', () => {
   it('calls /merge_requests/:iid with PRIVATE-TOKEN and returns source_branch', async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify({ source_branch: 'feat/x', sha: 'abc123' }), { status: 200 }))

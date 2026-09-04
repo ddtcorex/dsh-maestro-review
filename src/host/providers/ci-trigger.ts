@@ -5,6 +5,7 @@ import type { ReviewRequest, ReviewResult } from '../events.js'
 import { lastCompletedReview } from '../review-history.js'
 import type { ReviewSkillProfile } from '../skills-tool.js'
 import { gitlabAuthHeaders } from '../gitlab-auth.js'
+import { hasCompletedReviewForSha, hasRunningEyes } from '../ci-coexist.js'
 
 export const name = 'maestro-review-ci-trigger'
 export const inject = ['reviewRunner'] as const
@@ -96,6 +97,15 @@ export async function runCiTrigger(
   } else if (prior !== undefined && !config.rereviewOnPush) {
     result = { ok: true, summary: `new commits since ${prior.headSha} but REVIEW_ON_PUSH is not set, skipping`, failures: [], durationMs: 0 }
   } else {
+    // Coexistence (CI yields to webhook): the CI history store is invisible to
+    // the webhook flow and vice versa, so check the MR itself for a completed
+    // review marker of this SHA or an in-flight eyes marker before booting.
+    const coFetcher = deps.fetcher ?? fetch
+    if (await hasCompletedReviewForSha(coFetcher, config.gitlabBaseUrl, config.gitlabToken, config.sourceProjectId, config.mrIid, headSha)) {
+      result = { ok: true, summary: `webhook already reviewed ${headSha} — skipping`, failures: [], durationMs: 0 }
+    } else if (await hasRunningEyes(coFetcher, config.gitlabBaseUrl, config.gitlabToken, config.sourceProjectId, config.mrIid)) {
+      result = { ok: true, summary: 'another review is running — skipping', failures: [], durationMs: 0 }
+    } else {
     // projectPath is synthetic (no webhook payload to read it from) — harmless: the
     // reviewer-ci profile's own projectMappings is always [], so orchestrator's
     // mapping lookup on projectPath never matches regardless of its exact value
@@ -111,6 +121,7 @@ export async function runCiTrigger(
       reviewProfile: config.reviewProfile,
     }
     result = await ctx.reviewRunner(request)
+    }
   }
   const { writeFile } = deps.writeFile !== undefined ? { writeFile: deps.writeFile } : await import('node:fs/promises')
   // entrypoint.sh cds into deepseek-harness before execing dsh, so a bare relative
