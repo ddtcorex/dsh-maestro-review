@@ -64,15 +64,19 @@ export async function fetchMrSourceBranch(config: CiEnvConfig, fetcher: typeof f
   return (await fetchMrDetail(config, fetcher)).sourceBranch
 }
 
-/** MR detail pieces CI needs in one call: source branch (worktree) + head SHA (push-gate). */
-export async function fetchMrDetail(config: CiEnvConfig, fetcher: typeof fetch = fetch): Promise<{ sourceBranch: string; headSha: string }> {
+/** MR detail pieces CI needs in one call: source branch (worktree) + head SHA (push-gate) + project path (comment header/link). */
+export async function fetchMrDetail(config: CiEnvConfig, fetcher: typeof fetch = fetch): Promise<{ sourceBranch: string; headSha: string; projectPath: string }> {
   const url = `${config.gitlabBaseUrl}/api/v4/projects/${config.sourceProjectId}/merge_requests/${config.mrIid}`
   const res = await fetcher(url, { headers: gitlabAuthHeaders(config.gitlabToken) })
   if (!res.ok) throw new Error(`GitLab API error ${res.status}: ${await res.text()}`)
-  const body = await res.json() as { source_branch?: string; sha?: string }
+  const body = await res.json() as { source_branch?: string; sha?: string; references?: { full?: string } }
   if (typeof body.source_branch !== 'string') throw new Error('GitLab merge request response is missing source_branch')
   if (typeof body.sha !== 'string') throw new Error('GitLab merge request response is missing sha')
-  return { sourceBranch: body.source_branch, headSha: body.sha }
+  // references.full looks like "group/sub/project!123" — the real path feeds the
+  // comment header and View-MR link. Absent on old servers: fall back to project/<id>.
+  const full = body.references?.full
+  const projectPath = typeof full === 'string' && full.includes('!') ? full.slice(0, full.indexOf('!')) : `project/${config.sourceProjectId}`
+  return { sourceBranch: body.source_branch, headSha: body.sha, projectPath }
 }
 
 export async function runCiTrigger(
@@ -84,7 +88,7 @@ export async function runCiTrigger(
     history?: { lastCompletedReview(projectId: number, mrIid: number): Promise<{ headSha?: string } | undefined> }
   } = {},
 ): Promise<ReviewResult> {
-  const { sourceBranch, headSha } = await fetchMrDetail(config, deps.fetcher)
+  const { sourceBranch, headSha, projectPath } = await fetchMrDetail(config, deps.fetcher)
   // Push-gate (mirror of the webhook autoRereviewOnPush semantics): the bridge fires
   // on every MR pipeline, so skip when this exact head SHA already completed — and
   // skip new pushes too unless REVIEW_ON_PUSH=1. A re-run then gets the H6 incremental
@@ -106,12 +110,12 @@ export async function runCiTrigger(
     } else if (await hasRunningEyes(coFetcher, config.gitlabBaseUrl, config.gitlabToken, config.sourceProjectId, config.mrIid)) {
       result = { ok: true, summary: 'another review is running — skipping', failures: [], durationMs: 0 }
     } else {
-    // projectPath is synthetic (no webhook payload to read it from) — harmless: the
-    // reviewer-ci profile's own projectMappings is always [], so orchestrator's
-    // mapping lookup on projectPath never matches regardless of its exact value
-    // (same precedent as the PR #52 runner it replaces).
+    // The reviewer-ci profile's own projectMappings is always [], so the
+    // orchestrator's mapping lookup on projectPath never matches regardless
+    // of its exact value — but the real path feeds the comment header and
+    // View-MR link, so prefer it over the synthetic project/<id> fallback.
     const request: ReviewRequest = {
-      projectPath: `project/${config.sourceProjectId}`,
+      projectPath,
       projectId: config.sourceProjectId,
       mrIid: config.mrIid,
       sourceBranch,
