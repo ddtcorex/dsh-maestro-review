@@ -1,4 +1,5 @@
 import { gitlabAuthHeaders } from './gitlab-auth.js'
+import { fetchWithTimeout } from './gitlab-client.js'
 export interface CompareCommit {
   short_id?: string
   title?: string
@@ -56,7 +57,7 @@ export async function fetchMrDetailHeadSha(
   baseUrl: string, token: string, projectId: number, mrIid: number,
 ): Promise<string | undefined> {
   try {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mrIid}`,
       { headers: gitlabAuthHeaders(token) },
     )
@@ -73,7 +74,7 @@ export async function fetchCompare(
   baseUrl: string, token: string, projectId: number, from: string, to: string,
 ): Promise<CompareResult | undefined> {
   try {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `${baseUrl}/api/v4/projects/${projectId}/repository/compare?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
       { headers: gitlabAuthHeaders(token) },
     )

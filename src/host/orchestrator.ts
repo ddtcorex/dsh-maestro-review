@@ -524,7 +524,8 @@ const inFlightKeys = new Set<string>()
 
 function reviewKey(payload: ReviewRequest): string {
   const scope = payload.scope.kind === 'mr' ? 'mr' : `discussion:${payload.scope.discussionId}`
-  return `${payload.projectId}:${payload.mrIid}:${payload.mode}:${scope}`
+  const sha = typeof payload.pushSha === 'string' && payload.pushSha !== '' ? `:${payload.pushSha}` : ''
+  return `${payload.projectId}:${payload.mrIid}:${payload.mode}:${scope}:${payload.trigger}${sha}`
 }
 
 /**
@@ -640,7 +641,10 @@ export async function runReviewAndAudit(payload: ReviewRequest, deps: ReviewAndA
   assertSafeId(payload.projectId, 'projectId')
   assertSafeId(payload.mrIid, 'mrIid')
   const key = reviewKey(payload)
-  if (inFlightKeys.has(key)) return ''
+  if (inFlightKeys.has(key)) {
+    console.error(`maestro-orchestrator: deduped duplicate in-flight review key=${key} trigger=${payload.trigger}`)
+    return ''
+  }
   inFlightKeys.add(key)
   try {
     const worktreePath = await deps.ensureWorktree(deps.localRepoPath, payload.sourceBranch, payload.projectId, payload.mrIid, reviewKeyHash(payload))
@@ -711,7 +715,10 @@ export async function runDiffOnlyReview(payload: ReviewRequest, deps: DiffOnlyRe
   assertSafeId(payload.projectId, 'projectId')
   assertSafeId(payload.mrIid, 'mrIid')
   const key = reviewKey(payload)
-  if (inFlightKeys.has(key)) return ''
+  if (inFlightKeys.has(key)) {
+    console.error(`maestro-orchestrator: deduped duplicate in-flight review key=${key} trigger=${payload.trigger}`)
+    return ''
+  }
   inFlightKeys.add(key)
   try {
     const { summary, failures } = await deps.runReviewer(payload)
@@ -741,12 +748,18 @@ export async function runDiffOnlyReview(payload: ReviewRequest, deps: DiffOnlyRe
   }
 }
 
-/** Decline a Deep request that lacks the local mapping it requires. */
-export async function declineUnmappedDeepReview(payload: ReviewRequest, deps: ReviewCommentDeps): Promise<void> {
+/** Decline a Deep request that lacks the local mapping it requires.
+ * Resolves `true` when the decline was posted, `false` when a duplicate
+ * in-flight review is already handling this key (caller must not record a
+ * completion for work it did not do). */
+export async function declineUnmappedDeepReview(payload: ReviewRequest, deps: ReviewCommentDeps): Promise<boolean> {
   assertSafeId(payload.projectId, 'projectId')
   assertSafeId(payload.mrIid, 'mrIid')
   const key = reviewKey(payload)
-  if (inFlightKeys.has(key)) return
+  if (inFlightKeys.has(key)) {
+    console.error(`maestro-orchestrator: deduped duplicate in-flight review key=${key} trigger=${payload.trigger}`)
+    return false
+  }
   inFlightKeys.add(key)
   const depsWithUrl = deps as unknown as { gitlabBaseUrl?: string; projectPath?: string }
   const baseUrl = depsWithUrl.gitlabBaseUrl
@@ -761,6 +774,7 @@ export async function declineUnmappedDeepReview(payload: ReviewRequest, deps: Re
       console.error(`maestro-orchestrator: posting review comment failed: ${err instanceof Error ? err.message : String(err)}`)
       await deps.writeFailedReport(payload.mrIid, body)
     }
+    return true
   } finally {
     inFlightKeys.delete(key)
   }
@@ -1203,25 +1217,29 @@ export function apply(ctx: Context, config: Config): void {
       // Unmapped reviewer assignments remain no-ops. Only an explicit mention
       // may opt into the intentionally limited, diff-only fallback below.
       if (mapping === undefined && payload.trigger !== 'mention') {
+        console.error(`maestro-orchestrator: drop unmapped project=${payload.projectPath} mr=!${payload.mrIid} trigger=${payload.trigger}`)
         return { ok: true, failures: [], durationMs: Date.now() - t0 }
       }
       const triggers = resolveReviewTriggers(userConfig, mapping)
-      // Gated-off auto-triggers stay fully silent: no history, no signals, no comment.
+      // Gated-off auto-triggers stay fully silent: no history, no signals, no comment (host log only).
       if (payload.trigger === 'reviewer-assignment' && !triggers.onAssign) {
+        console.error(`maestro-orchestrator: drop assign-gate-off project=${payload.projectPath} mr=!${payload.mrIid} trigger=${payload.trigger}`)
         return { ok: true, failures: [], durationMs: Date.now() - t0 }
       }
       if (payload.trigger === 'push' && !triggers.onPush) {
+        console.error(`maestro-orchestrator: drop push-gate-off project=${payload.projectPath} mr=!${payload.mrIid} trigger=${payload.trigger}`)
         return { ok: true, failures: [], durationMs: Date.now() - t0 }
       }
       // A push only re-reviews an MR that already has a completed review;
       // otherwise every newly opened MR would be reviewed twice.
       if (payload.trigger === 'push' && !(await hasCompletedReview(payload.projectId, payload.mrIid))) {
+        console.error(`maestro-orchestrator: drop push-no-completed-history project=${payload.projectPath} mr=!${payload.mrIid} trigger=${payload.trigger}`)
         return { ok: true, failures: [], durationMs: Date.now() - t0 }
       }
       const { gitlabToken } = effective
       if (gitlabToken === undefined) {
         const message = `MR !${String(payload.mrIid)} for project ${payload.projectPath} has no GitLab token — set one in Maestro Settings or MAESTRO_GITLAB_TOKEN`
-        console.error(`maestro-orchestrator: ${message}`)
+        console.error(`maestro-orchestrator: drop missing-token project=${payload.projectPath} mr=!${String(payload.mrIid)} trigger=${payload.trigger} — ${message}`)
         return { ok: false, failures: [message], durationMs: Date.now() - t0 }
       }
       const resolved = { ...effective, gitlabToken }
@@ -1307,7 +1325,7 @@ export function apply(ctx: Context, config: Config): void {
         : undefined
       await signals?.start()
       const postComment = async (body: string) => {
-        const response = await fetch(
+        const response = await GitlabClient.fetchWithTimeout(
           `${resolved.gitlabBaseUrl}/api/v4/projects/${payload.projectId}/merge_requests/${payload.mrIid}/notes`,
           {
             method: 'POST',
@@ -1318,7 +1336,7 @@ export function apply(ctx: Context, config: Config): void {
         if (!response.ok) throw new Error(`GitLab API error ${response.status}: ${await response.text()}`)
       }
       const replyToDiscussion = async (discussionId: string, body: string) => {
-        const response = await fetch(
+        const response = await GitlabClient.fetchWithTimeout(
           `${resolved.gitlabBaseUrl}/api/v4/projects/${payload.projectId}/merge_requests/${payload.mrIid}/discussions/${encodeURIComponent(discussionId)}/notes`,
           {
             method: 'POST',
@@ -1333,7 +1351,13 @@ export function apply(ctx: Context, config: Config): void {
           // CI-deep (spec §3) skips the decline and falls through to the clone
           // branch below; every other unmapped deep review still declines here.
           if (payload.mode === 'deep' && !shouldCiDeepReview(payload)) {
-            await declineUnmappedDeepReview(payload, { postComment, replyToDiscussion, writeFailedReport, gitlabBaseUrl: resolved.gitlabBaseUrl } as unknown as ReviewCommentDeps)
+            const declined = await declineUnmappedDeepReview(payload, { postComment, replyToDiscussion, writeFailedReport, gitlabBaseUrl: resolved.gitlabBaseUrl } as unknown as ReviewCommentDeps)
+            if (!declined) {
+              console.error(`maestro-orchestrator: deduped duplicate in-flight review project=${payload.projectPath} mr=!${payload.mrIid} trigger=${payload.trigger}`)
+              await recordReviewFinish(historyId, { status: 'completed', summary: 'Duplicate in-flight review deduped — see the active run.' })
+              await signals?.finish('completed')
+              return { ok: true, summary: 'Duplicate in-flight review deduped — see the active run.', failures: [], durationMs: Date.now() - t0 }
+            }
             await recordReviewFinish(historyId, { status: 'completed', summary: 'Deep review declined (unmapped project)' })
             notifyTelegram('completed', 'Deep review declined (unmapped project)')
             await signals?.finish('completed')
@@ -1413,6 +1437,12 @@ export function apply(ctx: Context, config: Config): void {
               writeFailedReport,
               gitlabBaseUrl: resolved.gitlabBaseUrl,
             } as unknown as DiffOnlyReviewDeps)
+            if (diffBody === '') {
+              console.error(`maestro-orchestrator: deduped duplicate in-flight review project=${payload.projectPath} mr=!${payload.mrIid} trigger=${payload.trigger}`)
+              await recordReviewFinish(historyId, { status: 'completed', summary: 'Duplicate in-flight review deduped — see the active run.' })
+              await signals?.finish('completed')
+              return { ok: true, summary: 'Duplicate in-flight review deduped — see the active run.', failures: [], durationMs: Date.now() - t0 }
+            }
             const summary = summarize(diffBody)
             const branchNote = `fallback diff-only: branch ${payload.sourceBranch} not found on origin — ${summary ?? ''}`.trim()
             await recordReviewFinish(historyId, { status: 'completed', summary: branchNote })
@@ -1422,6 +1452,12 @@ export function apply(ctx: Context, config: Config): void {
           }
           throw err
         }
+        }
+        if (fullBody === '') {
+          console.error(`maestro-orchestrator: deduped duplicate in-flight review project=${payload.projectPath} mr=!${payload.mrIid} trigger=${payload.trigger}`)
+          await recordReviewFinish(historyId, { status: 'completed', summary: 'Duplicate in-flight review deduped — see the active run.' })
+          await signals?.finish('completed')
+          return { ok: true, summary: 'Duplicate in-flight review deduped — see the active run.', failures: [], durationMs: Date.now() - t0 }
         }
         await recordReviewFinish(historyId, { status: 'completed', summary: summarize(fullBody) })
         notifyTelegram('completed', summarize(fullBody))

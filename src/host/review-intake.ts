@@ -35,6 +35,19 @@ function isMentioned(text: string, botUsername: string): boolean {
   return new RegExp(`(^|[^A-Za-z0-9_.-])@${escaped}(?=$|[^A-Za-z0-9_.-])`, 'i').test(text)
 }
 
+/**
+ * Short head-sha hint for the in-flight key: prefers `last_commit.id`, falls
+ * back to `checkout_sha`. Returns `undefined` when the body carries no sha.
+ */
+function shortPushSha(attributes: JsonRecord): string | undefined {
+  const lastCommit = record(attributes.last_commit)
+  const raw = typeof lastCommit?.id === 'string' ? lastCommit.id
+    : typeof attributes.checkout_sha === 'string' ? attributes.checkout_sha
+    : undefined
+  if (raw === undefined || raw.trim() === '') return undefined
+  return raw.slice(0, 8)
+}
+
 function noteScope(attributes: JsonRecord): ReviewScope | undefined {
   const position = record(attributes.position)
   if (position === undefined) return { kind: 'mr' }
@@ -47,6 +60,28 @@ function noteScope(attributes: JsonRecord): ReviewScope | undefined {
 export interface RouteOptions {
   /** When true, an MR update carrying new commits routes a push re-review. */
   pushEnabled?: boolean
+}
+
+/** Actionable provider-layer drop reasons. Generic non-review GitLab noise
+ * (closes, label edits, ...) intentionally has no reason and stays silent. */
+export type DropReason = 'invalid-identity' | 'push-gate-off'
+
+/**
+ * Name why this webhook body will NOT route at the provider layer, or
+ * `undefined` when it routes (or is generic noise the provider ignores).
+ * Pure — the provider logs the returned reason with project/mr context.
+ */
+export function describeDrop(body: unknown, botUsername: string, options: RouteOptions = {}): DropReason | undefined {
+  const value = record(body)
+  if (value === undefined || botUsername.trim() === '') return 'invalid-identity'
+  const payload = mrPayload(value)
+  if (payload === undefined) return 'invalid-identity'
+  if (value.object_kind === 'merge_request') {
+    const attributes = record(value.object_attributes)
+    const hasNewCommits = typeof attributes?.oldrev === 'string' && attributes.oldrev !== ''
+    if (hasNewCommits && options.pushEnabled !== true) return 'push-gate-off'
+  }
+  return undefined
 }
 
 export function routeGitlabReviewRequest(body: unknown, botUsername: string, options: RouteOptions = {}): ReviewRequest | undefined {
@@ -65,7 +100,7 @@ export function routeGitlabReviewRequest(body: unknown, botUsername: string, opt
     if (options.pushEnabled === true) {
       const hasNewCommits = typeof attributes.oldrev === 'string' && attributes.oldrev !== ''
       if (hasNewCommits) {
-        return { ...payload, trigger: 'push', mode: 'quick', scope: { kind: 'mr' } }
+        return { ...payload, trigger: 'push', mode: 'quick', scope: { kind: 'mr' }, pushSha: shortPushSha(attributes) }
       }
     }
 

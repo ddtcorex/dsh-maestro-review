@@ -47,6 +47,27 @@ export function selectFileDiff(diffs: GitlabDiff[], path: string): string | unde
   return `--- ${d.old_path}\n+++ ${d.new_path}\n${d.diff}`
 }
 
+/**
+ * `fetch` with a hard ceiling: aborts the request after `ms` (default 15s)
+ * and throws `GitLab API timeout after <ms>ms` on abort. The timer is always
+ * cleared on settle. Pre-agent lookups degrade the throw to `undefined` at
+ * their own call site; post-agent callers let it reach `writeFailedReport`.
+ */
+export async function fetchWithTimeout(
+  url: string, init: RequestInit | undefined, ms = 15_000,
+): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), ms)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } catch (err) {
+    if ((err as Error)?.name === 'AbortError') throw new Error(`GitLab API timeout after ${ms}ms`)
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 interface GitlabDiffRefs {
   base_sha: string
   start_sha: string

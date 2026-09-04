@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Harden the webhook push path: 15s ceiling on pre-agent GitLab fetches,
+  post-comment/reply and signal calls; structured drop/dedup reasons in the
+  host log (orchestrator gates, intake identity, in-flight dedup); in-flight
+  key now includes trigger + push SHA so concurrent pushes stop suppressing
+  each other; history read-modify-write serialized and prune never drops a
+  running entry. A deduped decline no longer records a bogus completion.
+  (Ported from #73 onto the v0.5.0 flow.)
+
 ## [0.5.0] - 2026-09-04
 
 ### Added
