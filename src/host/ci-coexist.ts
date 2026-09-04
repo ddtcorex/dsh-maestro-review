@@ -2,10 +2,12 @@ import { gitlabAuthHeaders } from './gitlab-auth.js'
 import { parseReviewMarker } from './review-marker.js'
 
 /**
- * Coexistence checks (spec §4): the CI flow yields to any completed review of
- * the same head SHA (whatever flow posted it) and to an in-flight review
- * (eyes running-marker). Fetch failures fail open toward running — a missing
- * signal must never block a review, only a present one skips it.
+ * Coexistence checks (spec §4): the CI flow yields to a completed review of
+ * the same head SHA carrying a review marker (i.e. an earlier CI review —
+ * webhook reviews post marker-free and stay invisible here) and to an
+ * in-flight review (eyes running-marker). Fetch failures fail open toward
+ * running — a missing signal must never block a review, only a present one
+ * skips it.
  */
 export async function hasCompletedReviewForSha(
   fetcher: typeof fetch, baseUrl: string, token: string, projectId: number, mrIid: number, sha: string,

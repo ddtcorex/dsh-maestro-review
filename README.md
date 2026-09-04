@@ -27,7 +27,8 @@ Part of the Maestro Harness suite (`dsh-maestro-*`). Cordis patch rows:
 The same pipeline also runs headless from GitLab CI: a shared reviewer
 project (holds secrets + image) serves any number of source projects through
 a small bridge job — no DSH host, no project mapping needed. Quick runs
-diff-only; on-demand deep clones the MR head and reviews reviewer-only with
+diff-only (or on a real checkout when `REVIEW_PROFILE` is set — reviewer-only,
+no auditor); on-demand deep clones the MR head and reviews reviewer-only with
 a static-only audit (no govard runtime in the container).
 
 Full setup, per-case trigger workflows (quick/deep × CI/webhook), model
