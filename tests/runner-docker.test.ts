@@ -6,8 +6,18 @@ describe('docker', () => {
     const df = readFileSync('docker/Dockerfile', 'utf-8')
     expect(df).toMatch(/ARG NODE_VERSION=22/)
     expect(df).toMatch(/FROM node:\$\{NODE_VERSION\}-slim AS runtime/)
-    // published DSH CLI, not a source checkout
-    expect(df).toMatch(/npm install -g @deepseek-ai\/dsh@/)
+    // The dsh CLI is a dependency of profiles/reviewer-ci itself (not a
+    // separate `npm install -g`), so it shares the profile's own pnpm
+    // resolution graph — a second, disjoint install of the same core
+    // packages (dsh-scope, dsh-agent-loop, dsh-agent-presets, ...) produced
+    // two physically distinct copies in the same process, and Cordis's
+    // plugin loader picked a different one per plugin, so createScope()'s
+    // Symbol("dsh.scope") tag and dsh-agent-presets' own check of it never
+    // matched: "agent-presets: refusing to compose an unscoped context"
+    // on every agent creation (root-caused 2026-09-05, confirmed fixed by
+    // installing dsh inside the profile instead of globally).
+    expect(df).not.toMatch(/npm install -g @deepseek-ai\/dsh@/)
+    expect(df).toMatch(/node_modules\/\.bin.*PATH/)
     expect(df).not.toMatch(/COPY deepseek-harness/)
     expect(df).not.toMatch(/COPY packages\//)
     expect(df).not.toMatch(/AS builder/)
@@ -79,6 +89,14 @@ describe('docker', () => {
     expect(yml).toMatch(/provider:\s*custom-openai/)
     expect(yml).not.toMatch(/sk-[A-Za-z0-9]{8,}/)
     expect(yml).not.toMatch(/glpat-[A-Za-z0-9_.-]{8,}/)
+  })
+
+  it('profiles/reviewer-ci pins @deepseek-ai/dsh as its own dependency, not a global install, so it shares one pnpm resolution graph with dsh-base', () => {
+    const pkg = JSON.parse(readFileSync('profiles/reviewer-ci/package.json', 'utf-8')) as {
+      dependencies?: Record<string, string>
+    }
+    expect(pkg.dependencies?.['@deepseek-ai/dsh']).toBeTruthy()
+    expect(pkg.dependencies?.['@deepseek-ai/dsh']).toBe(pkg.dependencies?.['@deepseek-ai/dsh-base'])
   })
 
   it('ci-settings.deepseek.yaml is the sole baked default, serving deepseek-official from api.deepseek.com', () => {

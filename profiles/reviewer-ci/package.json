@@ -11,6 +11,7 @@
     }
   },
   "dependencies": {
+    "@deepseek-ai/dsh": "0.1.2-rc.1",
     "@deepseek-ai/dsh-base": "0.1.2-rc.1",
     "@deepseek-ai/dsh-agent-presets": "0.1.2-rc.1",
     "@ddtcorex/dsh-maestro-review": "0.6.0",

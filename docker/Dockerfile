@@ -4,7 +4,7 @@
 # reproducible from any machine. Build context is the package directory:
 #   docker build -f docker/Dockerfile \
 #     -t ddtcorex/maestro-reviewer:0.6.0 -t ddtcorex/maestro-reviewer:latest .
-# Pinned versions: DSH CLI below + profiles/reviewer-ci/package.json.
+# Pinned versions: profiles/reviewer-ci/package.json (dsh CLI included).
 ARG NODE_VERSION=22
 
 FROM node:${NODE_VERSION}-slim AS runtime
@@ -12,8 +12,7 @@ ARG CI_COMMIT_SHA=""
 ARG CI_COMMIT_TAG=""
 RUN apt-get update && apt-get install -y --no-install-recommends tini ca-certificates git \
  && rm -rf /var/lib/apt/lists/* \
- && corepack enable && corepack prepare pnpm@11.7.0 --activate \
- && npm install -g @deepseek-ai/dsh@0.1.2-rc.1
+ && corepack enable && corepack prepare pnpm@11.7.0 --activate
 WORKDIR /app
 ENV DSH_HOME=/app
 # Non-interactive build: pnpm v11 aborts a modules-dir purge without TTY
@@ -22,7 +21,20 @@ ENV CI=true
 
 # reviewer-ci profile — hand-authored package.json (exact registry pins, no
 # link:) + cordis.patch.yml. Installed once here, read from
-# $DSH_HOME/profiles/reviewer-ci at boot.
+# $DSH_HOME/profiles/reviewer-ci at boot. The dsh CLI itself (`@deepseek-ai/dsh`)
+# is a dependency of THIS package.json, not a separate `npm install -g` —
+# root-caused 2026-09-05: a global CLI install resolves its own independent
+# copy of the harness core (dsh-scope, dsh-agent-loop, dsh-agent-presets, ...)
+# from ITS OWN node_modules, disjoint from this profile's own pnpm install of
+# the same packages. Cordis's plugin loader ends up loading dsh-agent-loop
+# (part of dsh-base's bundle) from one copy and dsh-agent-presets (this
+# profile's own top-level insert) from the other, so createScope()'s
+# Symbol("dsh.scope") tag and dsh-agent-presets' scopeOf() check never see the
+# same Symbol — every agent creation failed with "agent-presets: refusing to
+# compose an unscoped context". Installing dsh IN this package.json puts it in
+# the SAME single pnpm resolution graph as dsh-base, so pnpm dedupes the
+# shared core packages to one physical copy — confirmed fixed live (see PATH
+# below for how the binary is found at runtime).
 COPY profiles/reviewer-ci ./profiles/reviewer-ci
 # --config.minimumReleaseAge=0: every dep here is an exact pin verified in
 # the frozen lockfile, so the 24h supply-chain age gate only blocks fresh
@@ -30,6 +42,8 @@ COPY profiles/reviewer-ci ./profiles/reviewer-ci
 # dsh-maestro-review@0.5.1 published hours earlier despite
 # minimumReleaseAgeExclude entries).
 RUN pnpm --dir profiles/reviewer-ci --config.minimumReleaseAge=0 install --frozen-lockfile
+# dsh now resolves from the profile's own node_modules/.bin, not a global install.
+ENV PATH="/app/profiles/reviewer-ci/node_modules/.bin:${PATH}"
 
 # Reviewer/auditor agent presets — orchestrator mounts preset ids
 # 'dsh-maestro-reviewer'/'dsh-maestro-auditor', and dsh-agent-presets derives the
