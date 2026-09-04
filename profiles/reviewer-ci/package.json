@@ -11,9 +11,9 @@
     }
   },
   "dependencies": {
-    "@deepseek-ai/dsh-base": "link:../../deepseek-harness/packages/bundle/base",
-    "@deepseek-ai/dsh-agent-presets": "link:../../deepseek-harness/packages/preset/agent-presets",
-    "@ddtcorex/dsh-maestro-review": "link:../../packages/dsh-maestro-review",
-    "@ddtcorex/maestro-skills": "^2.11.0"
+    "@deepseek-ai/dsh-base": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-agent-presets": "0.1.2-rc.1",
+    "@ddtcorex/dsh-maestro-review": "0.5.1",
+    "@ddtcorex/maestro-skills": "2.11.1"
   }
 }

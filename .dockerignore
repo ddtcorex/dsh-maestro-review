@@ -1,0 +1,9 @@
+# Build context is the package directory; only profiles/, presets/ and
+# docker/ are COPYed. Exclude everything else to keep the context small.
+node_modules
+lib
+.git
+tests
+docs
+*.tgz
+coverage
