@@ -3,6 +3,7 @@ import z from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { gitlabAuthHeaders } from './gitlab-auth.js'
 
 export const name = 'maestro-gitlab-client'
 export const inject = ['tools']
@@ -119,7 +120,7 @@ export function selectOwnThreads(
 
 export function apply(ctx: Context, config: Config): void {
   const apiBase = `${config.baseUrl}/api/v4/projects/${config.projectId}/merge_requests/${config.mrIid}`
-  const headers = { 'PRIVATE-TOKEN': config.token }
+  const headers = gitlabAuthHeaders(config.token)
   let cachedDiffRefs: GitlabDiffRefs | undefined
   let cachedDiffs: GitlabDiff[] | undefined
 

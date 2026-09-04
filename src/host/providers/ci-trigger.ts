@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import type { ReviewRequest, ReviewResult } from '../events.js'
 import { lastCompletedReview } from '../review-history.js'
 import type { ReviewSkillProfile } from '../skills-tool.js'
+import { gitlabAuthHeaders } from '../gitlab-auth.js'
 
 export const name = 'maestro-review-ci-trigger'
 export const inject = ['reviewRunner'] as const
@@ -65,7 +66,7 @@ export async function fetchMrSourceBranch(config: CiEnvConfig, fetcher: typeof f
 /** MR detail pieces CI needs in one call: source branch (worktree) + head SHA (push-gate). */
 export async function fetchMrDetail(config: CiEnvConfig, fetcher: typeof fetch = fetch): Promise<{ sourceBranch: string; headSha: string }> {
   const url = `${config.gitlabBaseUrl}/api/v4/projects/${config.sourceProjectId}/merge_requests/${config.mrIid}`
-  const res = await fetcher(url, { headers: { 'PRIVATE-TOKEN': config.gitlabToken } })
+  const res = await fetcher(url, { headers: gitlabAuthHeaders(config.gitlabToken) })
   if (!res.ok) throw new Error(`GitLab API error ${res.status}: ${await res.text()}`)
   const body = await res.json() as { source_branch?: string; sha?: string }
   if (typeof body.source_branch !== 'string') throw new Error('GitLab merge request response is missing source_branch')

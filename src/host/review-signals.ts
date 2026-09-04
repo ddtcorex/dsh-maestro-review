@@ -1,3 +1,4 @@
+import { gitlabAuthHeaders } from './gitlab-auth.js'
 /**
  * MR award-emoji acknowledgements: the MR shows "eyes" while a review runs and
  * a final marker when it completes or fails. Signalling is best-effort — any
@@ -12,7 +13,7 @@ export interface ReviewSignals {
 async function award(baseUrl: string, token: string, projectId: number, mrIid: number, name: string): Promise<void> {
   await fetch(`${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mrIid}/award_emoji`, {
     method: 'POST',
-    headers: { 'PRIVATE-TOKEN': token, 'Content-Type': 'application/json' },
+    headers: { ...gitlabAuthHeaders(token), 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
   })
 }
@@ -20,7 +21,7 @@ async function award(baseUrl: string, token: string, projectId: number, mrIid: n
 /** Remove only this bot's stale running markers; other users' awards stay untouched. */
 async function unawardOwn(baseUrl: string, token: string, projectId: number, mrIid: number, botUsername: string): Promise<void> {
   const response = await fetch(`${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mrIid}/award_emoji`, {
-    headers: { 'PRIVATE-TOKEN': token },
+    headers: gitlabAuthHeaders(token),
   })
   if (!response.ok) return
   const awards = (await response.json()) as Array<{ id?: number; name?: string; user?: { username?: string } }>
@@ -28,7 +29,7 @@ async function unawardOwn(baseUrl: string, token: string, projectId: number, mrI
     if (awardItem.name !== 'eyes' || awardItem.user?.username !== botUsername || typeof awardItem.id !== 'number') continue
     await fetch(`${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mrIid}/award_emoji/${awardItem.id}`, {
       method: 'DELETE',
-      headers: { 'PRIVATE-TOKEN': token },
+      headers: gitlabAuthHeaders(token),
     }).catch(() => {})
   }
 }

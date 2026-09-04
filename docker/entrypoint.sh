@@ -1,5 +1,13 @@
 #!/bin/sh
 set -eu
+# Auth: prefer the job's short-lived CI_JOB_TOKEN (cross-project via the source
+# project's job-token allowlist) over a stored PAT; an explicit
+# MAESTRO_GITLAB_TOKEN still wins as a manual override. The header kind follows
+# the token (ci-trigger/orchestrator read GITLAB_TOKEN_KIND).
+if [ -z "${MAESTRO_GITLAB_TOKEN:-}" ] && [ -n "${CI_JOB_TOKEN:-}" ]; then
+  export MAESTRO_GITLAB_TOKEN="$CI_JOB_TOKEN"
+  export GITLAB_TOKEN_KIND=job
+fi
 if [ -z "${MAESTRO_GITLAB_TOKEN:-}" ] || [ -z "${SOURCE_PROJECT_ID:-}" ] || [ -z "${MR_IID:-}" ]; then
   echo "[review] missing required env (MAESTRO_GITLAB_TOKEN, SOURCE_PROJECT_ID, MR_IID)" >&2
   exit 1

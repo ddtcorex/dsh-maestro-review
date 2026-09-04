@@ -40,6 +40,7 @@ import { loadedReviewProfile, type ReviewSkillProfile } from './skills-tool.js'
 import type { ReviewProvider } from './providers/interface.js'
 import { gitlabProvider } from './providers/gitlab.js'
 import './events.js'
+import { gitlabAuthHeaders } from './gitlab-auth.js'
 
 // Provider-aware wrapper — orchestrator can run reviews via any ReviewProvider.
 // This keeps the GitLab-specific flow intact while allowing Phase C to add GitHub/Jira without modifying core logic.
@@ -461,7 +462,7 @@ function normalizedDiffPath(path: string): string {
 export async function postReviewFindings(findings: ReviewFinding[], config: GitlabFindingPoster): Promise<void> {
   const fetcher = config.fetcher ?? fetch
   const apiBase = `${config.baseUrl}/api/v4/projects/${config.projectId}/merge_requests/${config.mrIid}`
-  const headers = { 'PRIVATE-TOKEN': config.token, 'Content-Type': 'application/json' }
+  const headers = { ...gitlabAuthHeaders(config.token), 'Content-Type': 'application/json' }
   for (const finding of findings) {
     let response: Response
     const label = severityPrefix(finding.severity)
@@ -758,7 +759,7 @@ export async function fetchMrBaseSha(
   try {
     const response = await fetcher(
       `${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mrIid}`,
-      { headers: { 'PRIVATE-TOKEN': token } },
+      { headers: gitlabAuthHeaders(token) },
     )
     if (!response.ok) return undefined
     const mr = await response.json() as { diff_refs?: { base_sha?: string } }
@@ -1235,7 +1236,7 @@ export function apply(ctx: Context, config: Config): void {
           `${resolved.gitlabBaseUrl}/api/v4/projects/${payload.projectId}/merge_requests/${payload.mrIid}/notes`,
           {
             method: 'POST',
-            headers: { 'PRIVATE-TOKEN': resolved.gitlabToken, 'Content-Type': 'application/json' },
+            headers: { ...gitlabAuthHeaders(resolved.gitlabToken), 'Content-Type': 'application/json' },
             body: JSON.stringify({ body }),
           },
         )
@@ -1246,7 +1247,7 @@ export function apply(ctx: Context, config: Config): void {
           `${resolved.gitlabBaseUrl}/api/v4/projects/${payload.projectId}/merge_requests/${payload.mrIid}/discussions/${encodeURIComponent(discussionId)}/notes`,
           {
             method: 'POST',
-            headers: { 'PRIVATE-TOKEN': resolved.gitlabToken, 'Content-Type': 'application/json' },
+            headers: { ...gitlabAuthHeaders(resolved.gitlabToken), 'Content-Type': 'application/json' },
             body: JSON.stringify({ body }),
           },
         )

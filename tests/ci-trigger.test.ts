@@ -66,6 +66,21 @@ describe('fetchMrDetail', () => {
       fetcher as unknown as typeof fetch,
     )).resolves.toEqual({ sourceBranch: 'feat/x', headSha: 'abc123' })
   })
+
+  it('uses JOB-TOKEN header when GITLAB_TOKEN_KIND=job', async () => {
+    process.env.GITLAB_TOKEN_KIND = 'job'
+    try {
+      const { fetchMrDetail } = await import('../src/host/providers/ci-trigger.js')
+      const fetcher = vi.fn(async () => new Response(JSON.stringify({ source_branch: 'feat/x', sha: 'abc123' }), { status: 200 }))
+      await fetchMrDetail(
+        parseCiEnvConfig({ GITLAB_HOST: 'h', MAESTRO_GITLAB_TOKEN: 'tok', SOURCE_PROJECT_ID: '1', MR_IID: '2' }),
+        fetcher as unknown as typeof fetch,
+      )
+      expect(fetcher).toHaveBeenCalledWith('https://h/api/v4/projects/1/merge_requests/2', { headers: { 'JOB-TOKEN': 'tok' } })
+    } finally {
+      delete process.env.GITLAB_TOKEN_KIND
+    }
+  })
 })
 
 describe('runCiTrigger push-gate', () => {
