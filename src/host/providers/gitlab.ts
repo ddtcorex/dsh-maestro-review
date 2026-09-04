@@ -128,7 +128,8 @@ export function apply(ctx: Context, config: Config): void {
         let body: GitlabMrWebhookBody; try { body = JSON.parse(raw) } catch { res.writeHead(400).end(); return }
         const userConfig = await loadUserConfig()
         if ((body.object_kind === 'merge_request' || body.object_kind === 'note') && !hasValidGitlabMrIdentity(body)) { res.writeHead(400).end(); return }
-        const request = routeGitlabReviewRequest(body, userConfig.botUsername ?? config.botUsername ?? 'maestro', { pushEnabled: userConfig.autoRereviewOnPush === true })
+        // The orchestrator is the sole push gate (resolveReviewTriggers); intake always emits.
+        const request = routeGitlabReviewRequest(body, userConfig.botUsername ?? config.botUsername ?? 'maestro', { pushEnabled: true })
         if (request !== undefined) ctx.emit('maestro/review-request', request)
         res.writeHead(200).end()
       })

@@ -1110,6 +1110,10 @@ export function apply(ctx: Context, config: Config): void {
       // Unmapped reviewer assignments remain no-ops. Only an explicit mention
       // may opt into the intentionally limited, diff-only fallback below.
       if (mapping === undefined && payload.trigger !== 'mention') return
+      const triggers = resolveReviewTriggers(userConfig, mapping)
+      // Gated-off auto-triggers stay fully silent: no history, no signals, no comment.
+      if (payload.trigger === 'reviewer-assignment' && !triggers.onAssign) return
+      if (payload.trigger === 'push' && !triggers.onPush) return
       // A push only re-reviews an MR that already has a completed review;
       // otherwise every newly opened MR would be reviewed twice.
       if (payload.trigger === 'push' && !(await hasCompletedReview(payload.projectId, payload.mrIid))) return
