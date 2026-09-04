@@ -10,7 +10,7 @@ function home(): string {
 
 function entry(id: string, startedAt: number) {
   return {
-    id, projectId: 1345, projectPath: 'app/onlylyon/visiterlyon', mrIid: 30,
+    id, projectId: 1345, projectPath: 'app/example-group/example-project', mrIid: 30,
     mode: 'quick' as const, scope: 'mr' as const, trigger: 'push' as const, startedAt,
   }
 }

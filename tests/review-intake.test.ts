@@ -52,7 +52,7 @@ function pushWithSha(sha: string | undefined) {
   const lastCommit = sha === undefined ? {} : { last_commit: { id: sha }, checkout_sha: sha }
   return {
     object_kind: 'merge_request',
-    project: { id: 1345, path_with_namespace: 'app/onlylyon/visiterlyon' },
+    project: { id: 1345, path_with_namespace: 'app/example-group/example-project' },
     object_attributes: {
       iid: 30, action: 'update', source_branch: 'maestro/e2e-push-gate-mtm6b71c',
       oldrev: 'aaa', ...lastCommit,
@@ -74,7 +74,7 @@ describe('D4 push sha routing', () => {
 })
 
 describe('D5 routing matrix', () => {
-  const proj = { id: 1345, path_with_namespace: 'app/onlylyon/visiterlyon' }
+  const proj = { id: 1345, path_with_namespace: 'app/example-group/example-project' }
   const attrs = { iid: 30, source_branch: 'maestro/e2e-push-gate-mtm6b71c' }
 
   function assignBody(previous: Array<{ username: string }>, current: Array<{ username: string }>) {

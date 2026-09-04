@@ -128,7 +128,7 @@ describe('D1 signals timeout', () => {
 
 describe('D4 in-flight key', () => {
   const base = {
-    projectId: 1345, projectPath: 'app/onlylyon/visiterlyon', mrIid: 30,
+    projectId: 1345, projectPath: 'app/example-group/example-project', mrIid: 30,
     sourceBranch: 'maestro/e2e-push-gate-mtm6b71c',
     trigger: 'push' as const, mode: 'quick' as const, scope: { kind: 'mr' as const },
   }

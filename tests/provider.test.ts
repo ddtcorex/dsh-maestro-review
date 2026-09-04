@@ -36,7 +36,7 @@ describe('ReviewProvider', () => {
 function pushBody(oldrev: string) {
   return {
     object_kind: 'merge_request',
-    project: { id: 1345, path_with_namespace: 'app/onlylyon/visiterlyon' },
+    project: { id: 1345, path_with_namespace: 'app/example-group/example-project' },
     object_attributes: {
       iid: 30, action: 'update', source_branch: 'maestro/e2e-push-gate-mtm6b71c', oldrev,
     },
