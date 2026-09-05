@@ -114,7 +114,8 @@ export function buildReviewerScopePrompt(opts: ReviewerScopePromptOpts): string 
   if (opts.scopeKind === 'discussion') {
     return `${opts.profileInstruction}Review only the requested inline discussion ${opts.discussionId} at ${opts.path}:${opts.line}. Do not review unrelated files or start a broad audit. Call gitlab_get_mr_diff, then gitlab_get_file_diff for the file under review, then call report_review_findings exactly once when done. ${lintRule}`
   }
-  return `${opts.profileInstruction}Review this merge request (${opts.mode} mode). Call gitlab_list_own_review_threads and gitlab_get_mr_diff first, then gitlab_get_file_diff per file you inspect (inline results never spill), then call report_review_findings exactly once when done. ${lintRule} DEDUP RULE: when a finding matches the substance of an existing own thread (same file and same underlying issue, even if worded differently — including resolved threads, whose reply reopens them), report it as {status: "reply", discussionId} instead of posting a new thread. Use status "new" only for issues with no matching thread.`
+  const deletedFilesRule = 'DELETED FILES: a deleted file\'s diff only tells you what logic is gone — never file a finding positioned on a deleted file (there is no line left to fix). If removing it drops behavior that is not replicated elsewhere, report that as a finding against the file that should carry the replacement logic (or the closest call site), not the deleted file itself.'
+  return `${opts.profileInstruction}Review this merge request (${opts.mode} mode). Call gitlab_list_own_review_threads and gitlab_get_mr_diff first, then gitlab_get_file_diff per file you inspect (inline results never spill), then call report_review_findings exactly once when done. ${lintRule} DEDUP RULE: when a finding matches the substance of an existing own thread (same file and same underlying issue, even if worded differently — including resolved threads, whose reply reopens them), report it as {status: "reply", discussionId} instead of posting a new thread. Use status "new" only for issues with no matching thread. ${deletedFilesRule}`
 }
 
 /**
@@ -419,6 +420,7 @@ interface GitlabMrChange {
   diff: string
   collapsed?: boolean
   too_large?: boolean
+  deleted_file?: boolean
 }
 
 interface GitlabDiffPosition {
@@ -522,6 +524,18 @@ export async function postReviewFindings(findings: ReviewFinding[], config: Gitl
       if (change === undefined) throw new Error(`cannot post inline finding at ${finding.path}:${finding.line}: file is not in the current MR diff`)
       if (change.collapsed === true || change.too_large === true || change.diff === '') {
         throw new Error(`cannot post inline finding at ${finding.path}:${finding.line}: GitLab did not return this file's complete diff`)
+      }
+      // A deleted file has no "new" side to attach an inline comment to — post as a
+      // top-level note instead of relying on diffPositionForNewLine() incidentally
+      // returning undefined (true today since a full deletion has no +/context rows,
+      // but that's a byproduct of diff-hunk mechanics, not a designed guard).
+      if (change.deleted_file === true) {
+        response = await fetcher(`${apiBase}/notes`, {
+          method: 'POST', headers,
+          body: JSON.stringify({ body: `**Inline fallback — \`${finding.path}\` was deleted in this MR (no line ${finding.line} to attach a comment to)**\n\n${body}` }),
+        })
+        if (!response.ok) throw new Error(`GitLab API error ${response.status}: ${await response.text()}`)
+        continue
       }
       const linePosition = diffPositionForNewLine(change.diff, finding.line)
       if (linePosition === undefined) {
