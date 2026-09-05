@@ -8,8 +8,10 @@ host) and the CI flow — see [Coexistence](#6-coexistence-ci-yields-to-webhook)
 
 Templates: `templates/reviewer-project.gitlab-ci.yml` (copy into the reviewer
 project), `templates/source-project.gitlab-ci.yml` (copy into each source
-project). Image: `docker/Dockerfile` → published as
-`ddtcorex/maestro-reviewer:latest`.
+project). Image: `docker/Dockerfile` → published to Docker Hub as
+`ddtcorex/maestro-reviewer:<version>` (the template pins an exact version,
+e.g. `0.6.0` — see [troubleshooting](#7-troubleshooting) for why `:latest`
+is deliberately not used).
 
 ---
 
@@ -144,6 +146,11 @@ flowchart TB
   G -- no --> I["Eyes running\nmarker?"]
   I -- yes --> J["skip: another review running"]
   I -- no --> K["Run review + post comment"]
+
+  classDef focal fill:#eb6c36,stroke:#2d3142,color:#fff
+  classDef muted fill:#f5f5f5,stroke:#8a94a6,color:#8a94a6
+  class K focal
+  class D,F,H,J muted
 ```
 
 ## 5. Model selection
@@ -233,8 +240,11 @@ sequenceDiagram
   the UI (`source=web`), see Case B.
 - **Bridge fails instantly** — `branch:` in the bridge doesn't match the
   reviewer project's default branch, or the pipeline user lacks access.
-- **Job uses an old image** — the template pins `:latest`; the runner pulls
-  per job, but a pinned digest in a forked template overrides that.
+- **Job uses an old image** — the template pins an exact version tag (e.g.
+  `:0.6.0`) rather than `:latest`, deliberately: a moving tag would let a
+  fresh push change every deployment's behavior with no changelog to trace
+  it against. Bump `REVIEWER_IMAGE` in the reviewer project's own copy of
+  the template to pick up a new release.
 - **Reports/artifacts missing** — the entrypoint must `cd $CI_PROJECT_DIR`
   before capturing the report dir (GitLab keeps the image `WORKDIR`); if you
   fork `entrypoint.sh`, keep that line.
