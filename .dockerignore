@@ -1,9 +1,16 @@
-# Build context is the package directory; only profiles/, presets/ and
-# docker/ are COPYed. Exclude everything else to keep the context small.
-node_modules
-lib
-.git
-tests
-docs
-*.tgz
-coverage
+# Build context is the package directory; only profiles/reviewer-ci,
+# presets/maestro-reviewer, presets/maestro-auditor, and docker/ are
+# actually COPYed (see docker/Dockerfile's COPY lines). Allowlist rather
+# than denylist: a denylist needs updating every time something new is
+# added to the package (it previously missed src/, client/, templates/,
+# .github/, .claude/, presets/maestro-coder/, and the locally-growing
+# .maestro-history/ scratch dir from local testing) and silently ships
+# whatever it forgets.
+*
+!profiles/reviewer-ci
+!presets/maestro-reviewer
+!presets/maestro-auditor
+!docker
+# Never ship a local dev install — the Dockerfile installs its own inside
+# the build (pnpm --dir profiles/reviewer-ci install --frozen-lockfile).
+profiles/reviewer-ci/node_modules
