@@ -4,6 +4,13 @@ stages: [review]
 # Only runs when there is an MR (fork MRs run fine too — this job has no secrets)
 maestro:trigger-review:
   stage: review
+  # The job only fails on a reviewer-infra problem (LLM/API error, timeout,
+  # failed comment post) — it never fails because findings were reported.
+  # Non-blocking so an outage of the shared reviewer project (serving many
+  # source projects) can't block this project's merge/deploy; check the MR
+  # comment for the actual review result. Drop this line to hard-block merge
+  # on any reviewer-infra failure instead.
+  allow_failure: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   # No image needed, no secrets needed
