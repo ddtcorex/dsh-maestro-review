@@ -65,6 +65,19 @@ describe('postReviewFindings path matching', () => {
       poster([] as never[], []) as never,
     )).rejects.toThrow(/not in the current MR diff/)
   })
+
+  it('falls back to a clearly-labeled top-level note for a finding on a deleted file', async () => {
+    const calls: unknown[] = []
+    const DELETED_PATH = 'app/code/Lcc/Lyoncitycard/Model/Carrier/Plugin/RestrictStorePickup.php'
+    const DELETED_DIFF = '@@ -1,3 +0,0 @@\n-old1\n-old2\n-old3'
+    await postReviewFindings(
+      [{ status: 'new', body: 'b', path: DELETED_PATH, line: 2 }],
+      poster([{ old_path: DELETED_PATH, new_path: DELETED_PATH, diff: DELETED_DIFF, deleted_file: true }], calls) as never,
+    )
+    expect(calls).toHaveLength(1)
+    expect((calls[0] as { body: string; position?: unknown }).position).toBeUndefined()
+    expect((calls[0] as { body: string }).body).toMatch(/was deleted in this MR/)
+  })
 })
 
 describe('ensureWorktree branch-not-found fallback', () => {

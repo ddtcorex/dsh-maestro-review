@@ -16,4 +16,9 @@ describe('buildReviewerScopePrompt', () => {
     const prompt = buildReviewerScopePrompt({ scopeKind: 'full', mode: 'quick', profileInstruction: '' })
     expect(prompt).toContain('DEDUP RULE')
   })
+  it('warns against filing findings positioned on a deleted file', () => {
+    const prompt = buildReviewerScopePrompt({ scopeKind: 'full', mode: 'quick', profileInstruction: '' })
+    expect(prompt).toMatch(/DELETED FILES/)
+    expect(prompt).toMatch(/never (file|post) a finding (located |positioned )?on a deleted file/i)
+  })
 })
