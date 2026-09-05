@@ -1,7 +1,7 @@
 {
   "name": "@ddtcorex/dsh-maestro-review",
   "private": false,
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Maestro Review — pluggable ReviewProvider (GitLab/GitHub) + orchestrator for automated MR review",
   "type": "module",
   "main": "./lib/index.js",
