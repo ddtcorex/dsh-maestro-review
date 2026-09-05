@@ -214,10 +214,43 @@ export function isUnsupportedReasoningError(err: unknown): boolean {
     || text.includes('UNSUPPORTED_REASONING_EFFORT')
 }
 
+/**
+ * Read an agent session's event log across host/session API skew: hosts
+ * built from the harness checkout expose `ownEvents()`/`snapshotEvents()`
+ * with no `.events` getter, while older packaged `@deepseek-ai/dsh-session`
+ * builds expose only the `.events` getter. `ownEvents()` (child-owned
+ * suffix, no fork prefix) wins when present — it matches what most callers
+ * want (this session's own turns, not an inherited fork prefix).
+ *
+ * Live-verified 2026-09-05: a real `AgentHandle`'s `agent.session.events` is
+ * `undefined` (the property does not exist on the current pinned
+ * `@deepseek-ai/dsh-session`), which previously made `getTurnErrorMessage()`
+ * silently return `undefined` for every real turn — the exact
+ * auth/billing-failure detection PR #81/#90 exist to provide never actually
+ * ran outside of unit tests that happened to mock the same wrong shape.
+ * Returns `[]` — never throws — when no event source exists.
+ */
+function readSessionEvents(session: unknown): unknown[] {
+  const candidate = session as {
+    ownEvents?: unknown
+    snapshotEvents?: unknown
+    events?: unknown
+  } | null | undefined
+  let events: unknown
+  if (typeof candidate?.ownEvents === 'function') {
+    events = (candidate.ownEvents as () => unknown)()
+  } else if (typeof candidate?.snapshotEvents === 'function') {
+    events = (candidate.snapshotEvents as () => unknown)()
+  } else {
+    events = candidate?.events
+  }
+  return Array.isArray(events) ? events : []
+}
+
 export function getTurnErrorMessage(handle: unknown): string | undefined {
   try {
-    const events = (handle as { agent?: { session?: { events?: unknown[] } } })?.agent?.session?.events
-    if (!Array.isArray(events)) return undefined
+    const events = readSessionEvents((handle as { agent?: { session?: unknown } })?.agent?.session)
+    if (events.length === 0) return undefined
     for (let i = events.length - 1; i >= 0; i--) {
       const ev = events[i] as { type?: unknown; data?: { reason?: { kind?: unknown; error?: { message?: unknown; code?: unknown } } } }
       if (ev?.type === 'turn/end' && ev?.data?.reason?.kind === 'error') {
@@ -602,29 +635,15 @@ function assertSafeId(value: number, label: string): void {
 }
 
 /**
- * Read an agent session's transcript for the auditor's final output across
- * host/session API skew: hosts built from the harness checkout expose
- * `ownEvents()`/`snapshotEvents()` with no `.events` getter, while older
- * packaged `@deepseek-ai/dsh-session` builds expose only the `.events`
- * getter. `ownEvents()` (child-owned suffix, no fork prefix) matches
- * `finalAssistantOutput`'s documented input best, so it wins when present.
+ * Read an agent session's transcript for the auditor's final output.
+ * `ownEvents()` (child-owned suffix, no fork prefix) matches
+ * `finalAssistantOutput`'s documented input best, so `readSessionEvents`
+ * preferring it over `snapshotEvents()`/`.events` suits this caller too.
  * Returns `[]` — never throws — when no event source exists.
  */
 export function auditorOutputFromSession(session: unknown) {
-  const candidate = session as {
-    ownEvents?: unknown
-    snapshotEvents?: unknown
-    events?: unknown
-  } | null | undefined
-  let events: unknown
-  if (typeof candidate?.ownEvents === 'function') {
-    events = (candidate.ownEvents as () => unknown)()
-  } else if (typeof candidate?.snapshotEvents === 'function') {
-    events = (candidate.snapshotEvents as () => unknown)()
-  } else {
-    events = candidate?.events
-  }
-  if (!Array.isArray(events)) return []
+  const events = readSessionEvents(session)
+  if (events.length === 0) return []
   return finalAssistantOutput(events as Parameters<typeof finalAssistantOutput>[0]) ?? []
 }
 
