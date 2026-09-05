@@ -251,6 +251,25 @@ export function assertTurnSucceeded(handle: unknown): void {
 }
 
 /**
+ * Like assertTurnSucceeded, but only throws when there is nothing left to
+ * salvage. A turn can error AFTER already producing real output — findings
+ * reported via the tool, or audit text written — when only the turn's own
+ * closing step fails afterward (a trailing rate-limit/auth hiccup). Throwing
+ * unconditionally there discarded already-produced, real work for no
+ * benefit; this only fails closed when the turn errored AND there is
+ * nothing usable to fall back on. Either way the turn error is never
+ * silent: logged as a warning when salvaging, thrown when not.
+ */
+export function assertTurnSucceededOrSalvage(handle: unknown, hasSalvageableOutput: boolean, label: string): void {
+  const turnMsg = getTurnErrorMessage(handle)
+  if (turnMsg === undefined) return
+  if (!hasSalvageableOutput) {
+    throw new Error(`Review turn failed before completing: ${turnMsg}`)
+  }
+  console.warn(`maestro-orchestrator: ${label} turn ended with an error after already producing usable output — using it anyway: ${turnMsg}`)
+}
+
+/**
  * Resolve the model to use for an automated review. Priority: per-project
  * override > global reviewModel (Maestro Settings) > row-config reviewModel
  * (lets a headless profile such as reviewer-ci pin a model from env vars,
@@ -1097,7 +1116,7 @@ export function apply(ctx: Context, config: Config): void {
           source: { kind: 'user' },
         }))
         await whenIdleWithTimeout(handle, effectiveAgentTimeoutMs)
-        assertTurnSucceeded(handle)
+        assertTurnSucceededOrSalvage(handle, capturedFindings.length > 0, 'reviewer')
         if (reviewProfile !== undefined && (reviewerContext === undefined || loadedReviewProfile(reviewerContext) !== reviewProfile)) {
           throw new Error(`reviewer did not successfully load the required ${reviewProfile} review skill profile; no findings were posted`)
         }
@@ -1195,9 +1214,9 @@ export function apply(ctx: Context, config: Config): void {
       const prompt = buildAuditorPrompt({ staticOnly: opts?.staticOnly === true })
       handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: prompt }], source: { kind: 'user' } }))
       await whenIdleWithTimeout(handle, effectiveAgentTimeoutMs)
-      assertTurnSucceeded(handle)
       const output = auditorOutputFromSession(handle.agent.session)
       const text = output.map(block => ('text' in block ? block.text : '')).join('')
+      assertTurnSucceededOrSalvage(handle, text.trim() !== '', 'auditor')
       return `## Maestro Performance Audit\n\n${text}`
     } finally {
       await handle.dispose()
