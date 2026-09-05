@@ -61,6 +61,19 @@ pnpm run build:client   # browser bundle -> lib/client.js (required after client
 
 See AGENTS.md for conventions (host/client split, secrets handling, live-validation rules).
 
+## Release
+
+A release ships **two artifacts that must stay in lockstep**: the npm
+package and the `ddtcorex/maestro-reviewer` Docker image — the image
+installs the npm package from the registry rather than copying source, so
+tagging a release alone is not enough to ship it to CI users. In short:
+bump `package.json` + `CHANGELOG.md` + the three image-tag references →
+tag `vX.Y.Z` (triggers npm publish + GitHub Release) → bump
+`profiles/reviewer-ci/package.json`'s own pin to match → rebuild and push
+the Docker image. Full step-by-step checklist, including the pnpm
+supply-chain age-gate workaround and how to live-test a fix in the image
+before a full release: see **Release checklist** in [`AGENTS.md`](AGENTS.md).
+
 ## License
 
 MIT
