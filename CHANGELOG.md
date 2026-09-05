@@ -4,6 +4,37 @@ All notable changes to this project are documented in this file. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-09-05
+
+### Fixed
+
+- **Root-caused and fixed `agent-presets: refusing to compose an unscoped
+  context`.** `npm install -g @deepseek-ai/dsh` in the reviewer image
+  resolved its own independent copy of the harness core (`dsh-scope`,
+  `dsh-agent-loop`, `dsh-agent-presets`, ...), disjoint from the profile's
+  own `pnpm install` of the same packages — `dsh-scope`'s module-level
+  `Symbol("dsh.scope")` evaluated twice, so scope identity checks never
+  matched. Fixed by installing `@deepseek-ai/dsh` as a `profiles/reviewer-ci`
+  dependency (same pin as `dsh-base`) instead of a separate global install,
+  so pnpm dedupes every shared core package into one physical copy. (#86)
+- Log GitLab API failures instead of silently swallowing them when the
+  running-marker ("eyes") award-emoji signal fails to set or clear. (#87)
+- Make the CI reviewer's `botUsername` configurable via
+  `REVIEW_BOT_USERNAME` instead of a hardcoded `maestro-bot` — the hardcoded
+  value never matched the real token identity, so stale "eyes" markers were
+  never cleared and own-thread dedup silently failed. (#88)
+- Stop discarding already-captured findings when a reviewer/auditor turn
+  errors out after producing usable output — the error is now logged as a
+  warning and the salvaged output is used, instead of being thrown away.
+  (#90)
+
+### Changed
+
+- Rewrote `.dockerignore` as an allowlist (only `profiles/reviewer-ci`,
+  `presets/`, `docker/` are sent to the Docker build context) instead of a
+  denylist, and corrected stale `:latest`-tag claims in
+  `docs/ci-reviewer-setup.md`. (#89)
+
 ## [0.6.0] - 2026-09-04
 
 ### Changed
