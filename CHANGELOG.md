@@ -4,6 +4,37 @@ All notable changes to this project are documented in this file. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-09-05
+
+### Fixed
+
+- **Critical: `getTurnErrorMessage()` read a nonexistent `session.events`
+  property.** The real `@deepseek-ai/dsh-session` `Session` class only
+  exposes `ownEvents()`/`snapshotEvents()`, never a bare `.events` array —
+  so `assertTurnSucceeded`/`assertTurnSucceededOrSalvage` silently returned
+  "no error" for every real turn, regardless of what actually happened. A
+  fully broken provider (invalid key, no balance, rate-limited) was
+  reported as `✅ Completed` with 0 findings — indistinguishable from a
+  clean review. Fixed by extracting the same host/session API-skew-tolerant
+  reader already used for the auditor's output into a shared
+  `readSessionEvents()` helper. Live-verified: an invalid API key now
+  correctly surfaces `ok=false` with the real auth error instead of a false
+  "Completed". (#96)
+- Guard against a finding positioned on a deleted file (fallback to a
+  clearly-labeled top-level note instead of relying on incidental diff-hunk
+  behavior); added a DELETED FILES rule to the reviewer scope prompt so
+  migration-gap findings land on the replacement file, not the deleted one.
+  (#95)
+- Clear a stale terminal marker (`white_check_mark`/`warning`) before
+  re-awarding the same name — a second consecutive completed/failed review
+  of one MR previously hit a GitLab 404 ("Award Emoji Name has already been
+  taken") and left the marker stale. (#94)
+- Make the source-project review bridge template non-blocking
+  (`allow_failure: true`) by default — the bridge job only fails on a
+  reviewer-infra problem, never on findings severity, so a shared
+  reviewer-project outage should not block a source project's own
+  merge/deploy. (#93)
+
 ## [0.6.1] - 2026-09-05
 
 ### Fixed
