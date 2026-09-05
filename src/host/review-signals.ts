@@ -24,24 +24,34 @@ async function award(baseUrl: string, token: string, projectId: number, mrIid: n
   if (!response.ok) throw new Error(`GitLab API error ${response.status} awarding "${name}": ${await response.text()}`)
 }
 
-/** Remove only this bot's stale running markers; other users' awards stay untouched. */
-async function unawardOwn(baseUrl: string, token: string, projectId: number, mrIid: number, botUsername: string): Promise<void> {
+/** Every marker name this bot ever awards — kept in one place so `unawardOwn` can always clear all of them, leaving at most one visible at a time. */
+const MARKER_NAMES = ['eyes', 'white_check_mark', 'warning'] as const
+
+/**
+ * Remove this bot's own markers among `names`; other users' awards stay untouched.
+ * Callers pass `MARKER_NAMES` (not just "eyes") so a stale terminal marker from a
+ * prior run (e.g. `white_check_mark`) is cleared before re-awarding the same name —
+ * GitLab rejects a duplicate award of the same name by the same user with a 404
+ * ("Award Emoji Name has already been taken"), which otherwise surfaces as a
+ * confusing failure on the second consecutive completed/failed review of one MR.
+ */
+async function unawardOwn(baseUrl: string, token: string, projectId: number, mrIid: number, botUsername: string, names: readonly string[]): Promise<void> {
   const response = await fetchWithTimeout(`${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mrIid}/award_emoji`, {
     headers: gitlabAuthHeaders(token),
   })
   if (!response.ok) throw new Error(`GitLab API error ${response.status} listing award emoji: ${await response.text()}`)
   const awards = (await response.json()) as Array<{ id?: number; name?: string; user?: { username?: string } }>
   for (const awardItem of Array.isArray(awards) ? awards : []) {
-    if (awardItem.name !== 'eyes' || awardItem.user?.username !== botUsername || typeof awardItem.id !== 'number') continue
+    if (awardItem.name === undefined || !names.includes(awardItem.name) || awardItem.user?.username !== botUsername || typeof awardItem.id !== 'number') continue
     const deleteResponse = await fetchWithTimeout(`${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mrIid}/award_emoji/${awardItem.id}`, {
       method: 'DELETE',
       headers: gitlabAuthHeaders(token),
     }).catch((err: unknown) => {
-      console.error(`review-signals: failed to delete stale eyes marker ${awardItem.id} on MR !${mrIid}`, err)
+      console.error(`review-signals: failed to delete stale ${awardItem.name} marker ${awardItem.id} on MR !${mrIid}`, err)
       return undefined
     })
     if (deleteResponse !== undefined && !deleteResponse.ok) {
-      console.error(`review-signals: GitLab API error ${deleteResponse.status} deleting stale eyes marker ${awardItem.id} on MR !${mrIid}`)
+      console.error(`review-signals: GitLab API error ${deleteResponse.status} deleting stale ${awardItem.name} marker ${awardItem.id} on MR !${mrIid}`)
     }
   }
 }
@@ -51,7 +61,7 @@ export function createReviewSignals(options: { baseUrl: string; token: string; p
   return {
     async start() {
       try {
-        await unawardOwn(baseUrl, token, projectId, mrIid, botUsername)
+        await unawardOwn(baseUrl, token, projectId, mrIid, botUsername, MARKER_NAMES)
         await award(baseUrl, token, projectId, mrIid, 'eyes')
       } catch (err) {
         // Signalling must never break the review, but a swallowed failure
@@ -63,7 +73,7 @@ export function createReviewSignals(options: { baseUrl: string; token: string; p
     },
     async finish(outcome) {
       try {
-        await unawardOwn(baseUrl, token, projectId, mrIid, botUsername)
+        await unawardOwn(baseUrl, token, projectId, mrIid, botUsername, MARKER_NAMES)
         await award(baseUrl, token, projectId, mrIid, outcome === 'completed' ? 'white_check_mark' : 'warning')
       } catch (err) {
         console.error(`review-signals: failed to clear the running marker / award the final marker on MR !${mrIid}`, err)
