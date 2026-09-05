@@ -111,6 +111,34 @@ describe('review-signals', () => {
     expect(fetchMock).toHaveBeenCalledTimes(4)
   })
 
+  it('clears a stale terminal marker of the same name before re-awarding it (prevents duplicate-name 404)', async () => {
+    const fetchMock = vi.fn()
+      // unawardOwn's GET listing: a leftover white_check_mark from a prior completed run
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{ id: 20, name: 'white_check_mark', user: { username: 'maestro-bot' } }],
+      })
+      // DELETE the stale white_check_mark
+      .mockResolvedValueOnce({ ok: true })
+      // award the fresh white_check_mark
+      .mockResolvedValueOnce({ ok: true })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const signals = createReviewSignals({
+      baseUrl: 'https://gitlab.example.com',
+      token: 'tok',
+      projectId: 1,
+      mrIid: 2,
+      botUsername: 'maestro-bot',
+    })
+    await signals.finish('completed')
+
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    const [deleteUrl, deleteInit] = fetchMock.mock.calls[1] as [string, RequestInit]
+    expect(deleteUrl).toContain('/award_emoji/20')
+    expect(deleteInit.method).toBe('DELETE')
+  })
+
   it('does not log anything when both calls succeed', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] })
