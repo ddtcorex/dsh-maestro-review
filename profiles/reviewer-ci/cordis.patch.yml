@@ -38,7 +38,18 @@
     # "[object Object]" instead of a string).
     gitlabBaseUrl: !!js "process.env.GITLAB_HOST ? 'https://' + process.env.GITLAB_HOST : ''"
     gitlabToken: !!js process.env.MAESTRO_GITLAB_TOKEN
-    botUsername: maestro-bot
+    # botUsername drives more than mention text: review-signals.ts's
+    # unawardOwn() (clearing the running "eyes" marker) and gitlab-client.ts's
+    # selectOwnThreads() (re-review dedup/reply) both filter GitLab objects by
+    # `author.username === botUsername`. The hardcoded "maestro-bot" default
+    # only matches if MAESTRO_GITLAB_TOKEN really belongs to a "maestro-bot"
+    # account; a personal PAT posts as its owner's real username instead, so
+    # neither check ever recognized its own objects (found live 2026-09-05:
+    # every award_emoji in E2E testing was posted as the token owner, never
+    # "maestro-bot" — stale eyes markers never cleared). Set
+    # REVIEW_BOT_USERNAME to the token's real GitLab username when it isn't
+    # a literal "maestro-bot" account.
+    botUsername: !!js "process.env.REVIEW_BOT_USERNAME || 'maestro-bot'"
     projectMappings: []
     agentTimeoutMs: 1200000
     # Pinned review model (no Settings UI in CI). Optional as a pair: both unset
