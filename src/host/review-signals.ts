@@ -13,11 +13,15 @@ export interface ReviewSignals {
 }
 
 async function award(baseUrl: string, token: string, projectId: number, mrIid: number, name: string): Promise<void> {
-  await fetchWithTimeout(`${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mrIid}/award_emoji`, {
+  const response = await fetchWithTimeout(`${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mrIid}/award_emoji`, {
     method: 'POST',
     headers: { ...gitlabAuthHeaders(token), 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
   })
+  // fetchWithTimeout only throws on a network/abort failure; a non-2xx status
+  // (expired token, missing scope, rate-limited) resolves normally and must
+  // be checked explicitly, or the caller's failure logging never fires.
+  if (!response.ok) throw new Error(`GitLab API error ${response.status} awarding "${name}": ${await response.text()}`)
 }
 
 /** Remove only this bot's stale running markers; other users' awards stay untouched. */
@@ -25,14 +29,20 @@ async function unawardOwn(baseUrl: string, token: string, projectId: number, mrI
   const response = await fetchWithTimeout(`${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mrIid}/award_emoji`, {
     headers: gitlabAuthHeaders(token),
   })
-  if (!response.ok) return
+  if (!response.ok) throw new Error(`GitLab API error ${response.status} listing award emoji: ${await response.text()}`)
   const awards = (await response.json()) as Array<{ id?: number; name?: string; user?: { username?: string } }>
   for (const awardItem of Array.isArray(awards) ? awards : []) {
     if (awardItem.name !== 'eyes' || awardItem.user?.username !== botUsername || typeof awardItem.id !== 'number') continue
-    await fetchWithTimeout(`${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mrIid}/award_emoji/${awardItem.id}`, {
+    const deleteResponse = await fetchWithTimeout(`${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mrIid}/award_emoji/${awardItem.id}`, {
       method: 'DELETE',
       headers: gitlabAuthHeaders(token),
-    }).catch(() => {})
+    }).catch((err: unknown) => {
+      console.error(`review-signals: failed to delete stale eyes marker ${awardItem.id} on MR !${mrIid}`, err)
+      return undefined
+    })
+    if (deleteResponse !== undefined && !deleteResponse.ok) {
+      console.error(`review-signals: GitLab API error ${deleteResponse.status} deleting stale eyes marker ${awardItem.id} on MR !${mrIid}`)
+    }
   }
 }
 
