@@ -1,8 +1,14 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { assertTurnSucceeded, assertTurnSucceededOrSalvage } from '../src/host/orchestrator.js'
 
+// Matches the real @deepseek-ai/dsh-session `Session` class: it exposes
+// `snapshotEvents()`/`ownEvents()` methods, NOT a bare `.events` array
+// property (proven live 2026-09-05: a real AgentHandle's
+// `agent.session.events` is `undefined`, silently defeating this whole
+// assertion — see `readSessionEvents()`'s doc comment for the host/session
+// API-skew this must tolerate).
 function handleWithEvents(events: unknown[]): unknown {
-  return { agent: { session: { events } } }
+  return { agent: { session: { snapshotEvents: () => events } } }
 }
 
 const erroredHandle = handleWithEvents([
@@ -49,6 +55,13 @@ describe('assertTurnSucceeded', () => {
       { type: 'turn/end', data: { turn: 1, reason: { kind: 'error', error: { code: 'TIMEOUT' } } } },
     ])
     expect(() => assertTurnSucceeded(handle)).toThrow(/TIMEOUT/)
+  })
+
+  it('also reads a legacy handle whose session only exposes a bare .events array', () => {
+    const handle = { agent: { session: { events: [
+      { type: 'turn/end', data: { turn: 1, reason: { kind: 'error', error: { message: 'legacy shape', code: 'AUTH' } } } },
+    ] } } }
+    expect(() => assertTurnSucceeded(handle)).toThrow(/legacy shape/)
   })
 })
 
