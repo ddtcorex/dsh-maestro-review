@@ -39,6 +39,36 @@ is deliberately not used).
 4. The reviewer job needs **no source checkout** (`GIT_STRATEGY: none`); it
    boots `dsh --profile reviewer-ci` inside the image.
 
+### Bot identity (recommended)
+
+Comment authorship follows the token owner: every note the reviewer posts is
+attributed to whoever owns `MAESTRO_GITLAB_TOKEN`, while
+`REVIEW_BOT_USERNAME` is only the recognition label the reviewer uses to
+clear its own 👀 markers and dedupe its own threads — it grants no
+permission. Pair them deliberately:
+
+1. Create a **Project Access Token** on the reviewer project (`api` scope,
+   Developer role, a descriptive name such as `maestro-reviewer`). GitLab
+   auto-creates a bot user for it (`project_<id>_bot_<random>`, visible in
+   the project's members). A project token lives at most 1 year — record the
+   expiry and rotate before it lapses, otherwise jobs "complete" without ever
+   posting (`POST /notes` = 401). A personal access token also works but
+   attributes every review to you and dies with your access — prefer the bot.
+2. Set `MAESTRO_GITLAB_TOKEN` to that token's secret (shown once at
+   creation) and `REVIEW_BOT_USERNAME` to the bot username, as a matching
+   pair.
+3. Invite the bot user into **each source project** (Developer role), or once
+   at the shared group level. Without membership the reviewer job fails when
+   posting (`POST /notes` = 401/403) — the token is scoped to the reviewer
+   project until the bot is invited elsewhere.
+
+Note the separate bridge permission: the downstream `trigger:` runs as the
+user who fired the source pipeline, so every developer opening MRs also
+needs Developer+ access on the reviewer project — otherwise the bridge fails
+with `downstream_bridge_project_not_found` and no reviewer pipeline exists
+at all (proven live: author without membership, MR pipeline green via
+`allow_failure`, zero review comments).
+
 ## 2. Per-source setup: the bridge job
 
 1. Copy `templates/source-project.gitlab-ci.yml` into the source project
