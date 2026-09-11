@@ -70,3 +70,26 @@ describe('maestro-coder parity with the shipped standard preset', () => {
     expect(block).toMatch(/modelSelectionSettings: true/)
   })
 })
+
+/**
+ * The reviewer and auditor are each mounted by the orchestrator as their own
+ * agent; delegating to a Codex/Claude child is what lets a review fan out.
+ * `tool-subagent` registers no tool while its provider is absent, so a
+ * deployment without the provider bundles gets an inert row, not a mount
+ * failure.
+ */
+describe.each(['maestro-reviewer', 'maestro-auditor'])('%s delegation rows', (dir) => {
+  const yml = read(dir)
+
+  it.each([
+    ['tool-subagent-codex', 'codex', 'subagent_codex'],
+    ['tool-subagent-claude-code', 'claude-code', 'subagent_claude_code'],
+  ])('routes %s to its provider as a one-shot child', (id, provider, toolName) => {
+    const block = rowBlock(yml, id)
+    expect(block).toMatch(/^\s+name: '@deepseek-ai\/dsh-tool-subagent'$/m)
+    expect(block).toMatch(new RegExp(`^\\s+provider: ${provider}$`, 'm'))
+    expect(block).toMatch(new RegExp(`^\\s+toolName: ${toolName}$`, 'm'))
+    expect(block).toMatch(/^\s+backgroundMode: one-shot$/m)
+    expect(block).toMatch(/^\s+maxDepth: provider-managed$/m)
+  })
+})

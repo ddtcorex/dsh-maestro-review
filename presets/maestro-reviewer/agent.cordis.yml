@@ -16,3 +16,24 @@
 
 - id: skills-tool
   name: '@ddtcorex/dsh-maestro-review/lib/skills-tool.js'
+
+# Delegation tools: the providers live in the Profile
+# (`subagent-codex` + `subagent-claude-code` rows), so a deployment without
+# those bundles gets inert rows — `tool-subagent` registers no tool until its
+# provider appears — rather than a failed mount. One-shot rows: a review
+# delegates a bounded task and collects the result.
+- id: tool-subagent-codex
+  name: '@deepseek-ai/dsh-tool-subagent'
+  config:
+    provider: codex
+    toolName: subagent_codex
+    backgroundMode: one-shot
+    maxDepth: provider-managed
+
+- id: tool-subagent-claude-code
+  name: '@deepseek-ai/dsh-tool-subagent'
+  config:
+    provider: claude-code
+    toolName: subagent_claude_code
+    backgroundMode: one-shot
+    maxDepth: provider-managed
