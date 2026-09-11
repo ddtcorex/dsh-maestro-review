@@ -57,9 +57,12 @@
 
 # ── goals ───────────────────────────────────────────────────────────────────
 
-# Only the model-facing tool. The goal service, its session driver, and the
-# `/goal` command stay on the host plane and are keyed by session, so what
-# this preset chooses is whether its agent can call the goal tool.
+# Only the model-facing controls. The goal service and its session driver stay on
+# the host plane, where the Gateway can resolve them; the human command and the
+# model-facing tool register into this preset's scoped layers.
+- id: command-goal
+  name: '@deepseek-ai/dsh-command-goal'
+
 - id: tool-goal
   name: '@deepseek-ai/dsh-tool-goal'
 
@@ -137,6 +140,7 @@
       config:
         provider: spawn
         toolName: subagent
+        modelSelectionSettings: true
         backgroundMode: continuable
 
     - id: tool-subagent-fork
@@ -203,7 +207,11 @@
 - id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
-    text: |
+    # The working directory varies per session, so it belongs in the suffix: the
+    # prefix is the model-stable part of the prompt that stays cacheable. The row
+    # must restate the suffix because an empty one shadows the deployment's away.
+    suffix: Your working directory is {{cwd}}.
+    prefix: |
       You are Maestro Coder, a strictly-compliant Pair Programming Assistant.
       MANDATORY WORKFLOW:
       1. Always call maestro_get_skills BEFORE writing code to understand the conventions.
@@ -221,3 +229,6 @@
   name: '@ddtcorex/dsh-maestro-govard/lib/govard-tool.js'
   config:
     rootPath: null
+
+- id: present
+  name: '@deepseek-ai/dsh-tool-present'

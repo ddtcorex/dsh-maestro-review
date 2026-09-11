@@ -1,7 +1,11 @@
 - id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
-    text: |
+    # The working directory varies per session, so it belongs in the suffix: the
+    # prefix is the model-stable part of the prompt that stays cacheable. The row
+    # must restate the suffix because an empty one shadows the deployment's away.
+    suffix: Your working directory is {{cwd}}.
+    prefix: |
       You are Maestro Auditor, a Performance Architect. Workflow:
       1. Call govard_env_up to bring up the merge request's Magento 2 environment.
       2. Call govard_shell to run the test suite (e.g. "vendor/bin/phpunit") and any profiling commands.
