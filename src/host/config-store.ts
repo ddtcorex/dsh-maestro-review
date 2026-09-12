@@ -52,6 +52,12 @@ export interface MaestroUserConfig {
   lastTunnelRunning?: boolean
   /** Gate LAN access behind a second PIN. Default false — LAN stays open. */
   lanPinEnabled?: boolean
+  /**
+   * Login-cookie lifetime for the remote PIN gate, in hours. `0` = session
+   * cookie; absent = 24. Owned by dsh-maestro-remote; declared here because
+   * this package's settings RPC is the writer.
+   */
+  pinSessionTtlHours?: number
   /** Telegram Bot API credentials for one-way notifications. */
   telegramBotToken?: string
   telegramChatId?: string
