@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.7.0] - 2026-09-13
+
+### Added
+
+- Reviewer/auditor delegation rows in the shipped presets (#103).
+- Persist and validate `pinSessionTtlHours` through the settings RPC (#104).
+
+### Fixed
+
+- Migrate preset persona rows to prefix/suffix (#102).
+- Declare row `inject` for the settings-rpc row on DSH 0.1.5 (#101).
+
+### Changed
+
+- Document the bot identity best practice for CI reviewer setup (#100) and the
+  release checklist (#99); pin the reviewer-ci profile to
+  `dsh-maestro-review@0.6.2` (#98).
+
 All notable changes to this project are documented in this file. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
