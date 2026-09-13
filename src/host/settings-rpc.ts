@@ -14,7 +14,7 @@ const SAVABLE_KEYS = new Set<keyof MaestroUserConfig>([
   'gitlabBaseUrl', 'gitlabToken', 'botUsername', 'webhookSecret', 'webhookPort',
   'projectMappings', 'reviewModel', 'autoRereviewOnPush', 'autoReviewOnAssign', 'agentTimeoutMs', 'reviewSessionRetentionDays',
   'tunnelMode', 'quickTarget', 'tunnelId', 'tunnelCredentialsFile', 'tunnelHostname',
-  'proxyPort', 'proxyHost', 'lanPinEnabled', 'telegramBotToken', 'telegramChatId',
+  'proxyPort', 'proxyHost', 'lanPinEnabled', 'pinSessionTtlHours', 'telegramBotToken', 'telegramChatId',
   'telegramReviewNotifications',
 ])
 
@@ -91,6 +91,13 @@ function validateSavePayload(payload: unknown): { ok: true; patch: Partial<Maest
     }
     if (key === 'agentTimeoutMs' && value !== undefined && (typeof value !== 'number' || value < 1000)) {
       return { ok: false, message: 'agentTimeoutMs must be at least 1000 ms.' }
+    }
+    // Mirror of MAX_PIN_SESSION_TTL_HOURS in dsh-maestro-remote: the two packages
+    // ship independently, so the boundary test below — not a shared constant — is
+    // what keeps them in step.
+    if (key === 'pinSessionTtlHours' && value !== undefined &&
+        (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 8760)) {
+      return { ok: false, message: 'pinSessionTtlHours must be an integer between 0 and 8760.' }
     }
     if (key === 'reviewSessionRetentionDays' && value !== undefined && (typeof value !== 'number' || value < 0)) {
       return { ok: false, message: 'reviewSessionRetentionDays must be 0 (off) or a positive number of days.' }
