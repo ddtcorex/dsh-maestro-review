@@ -53,6 +53,28 @@ describe.each(PRESET_DIRS)('%s persona row', (dir) => {
   })
 })
 
+// Root-caused 2026-09-14: a real MR review crashed calling
+// maestro_load_review_profile with a guessed profile on a diff-only CI run
+// that has no REVIEW_PROFILE configured — the static persona prefix (cached,
+// sent on every turn) unconditionally told the model to call this tool
+// "before inspecting code", while the per-request scope prompt separately
+// told it "this is a diff-only review with no local checkout or Magento
+// environment", giving the model two conflicting instructions with no
+// guidance on which wins. skills-tool.ts's loadedReviewProfile() now
+// tolerates the resulting Cordis DI gap, but the reviewer prefix should
+// still not tell the model to do something the request may not want.
+describe('maestro-reviewer persona row scopes the profile-loading step', () => {
+  const block = rowBlock(read('maestro-reviewer'), 'persona')
+
+  it('only calls maestro_load_review_profile when the review request names a profile', () => {
+    expect(block).toMatch(/if the review request names a (review )?profile/i)
+  })
+
+  it('tells the model to skip profile loading for a diff-only review', () => {
+    expect(block).toMatch(/diff-only review.*skip/is)
+  })
+})
+
 describe('maestro-coder parity with the shipped standard preset', () => {
   const yml = read('maestro-coder')
 

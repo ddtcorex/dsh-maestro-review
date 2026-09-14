@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.7.4] - 2026-09-14
+
+### Fixed
+
+- **`loadedReviewProfile()` crashed instead of returning `undefined`** when
+  called from a Cordis context with no `agent` service available —
+  `ctx.agent === undefined` still throws `cannot get property "agent"
+  without inject`, because Cordis's `Context` proxy throws synchronously on
+  any unregistered property read, before the equality check ever runs. Live
+  reproduced on a real MR (a CI-managed project): the reviewer turn failed
+  with exactly that message on the real CI runner, twice, while the
+  identical request succeeded locally both times it was retried —
+  non-deterministic because it depends on whether the model actually calls
+  `maestro_load_review_profile`). Reproduced deterministically instead
+  against real `@deepseek-ai/cordis` (a nested plugin context lacking
+  `agent` always throws on `.agent`), fixed with a try/catch, and covered
+  by a regression test — no live MR needed to validate this one.
+- The reviewer persona's static prefix (cached, sent on every turn)
+  unconditionally told the model to call `maestro_load_review_profile`
+  "before inspecting code", while the per-request scope prompt separately
+  told a diff-only CI review (no `REVIEW_PROFILE` configured) "there is no
+  local checkout or Magento environment" — two conflicting instructions
+  with no guidance on which wins, which is what let the model hit the bug
+  above in the first place. The prefix now explicitly skips profile
+  loading for a diff-only review.
+
 ## [0.7.3] - 2026-09-14
 
 ### Fixed
