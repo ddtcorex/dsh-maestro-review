@@ -210,7 +210,10 @@ export function apply(ctx: Context): void {
       // The proxy reads lanPinEnabled at boot; a reload applies the new gate
       // without waiting for a harness restart.
       await ctx.maestroTunnel.reloadConfig()
-      return ok({ enabled })
+      // The gate lives in the proxy listener, not in the settings store, so a
+      // client cannot infer "live" from a successful write. Say so explicitly
+      // instead of letting the config card imply the gate is already in force.
+      return ok({ enabled, requiresRestart: true })
     }
     if (endpoint === MAESTRO_ENDPOINTS.lanPinRotate) {
       return ok({ pin: await ctx.maestroTunnel.rotateLanPin() })
