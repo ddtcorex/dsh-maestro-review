@@ -644,7 +644,30 @@ function assertSafeId(value: number, label: string): void {
 export function auditorOutputFromSession(session: unknown) {
   const events = readSessionEvents(session)
   if (events.length === 0) return []
-  return finalAssistantOutput(events as Parameters<typeof finalAssistantOutput>[0]) ?? []
+  return finalAssistantOutput(normalizeAssistantEventStreams(events) as Parameters<typeof finalAssistantOutput>[0]) ?? []
+}
+
+/**
+ * `finalAssistantOutput` iterates `event.data.stream` for every
+ * assistant/message and assistant/attempt event unconditionally (dsh-subagent
+ * 0.1.5+) — an event missing it (a legacy or degraded session snapshot)
+ * throws `TypeError: stream is not iterable` instead of the documented
+ * never-throws behavior. Default it to `[]` so folding a legacy event still
+ * falls back to the message's own `content`, which `AssistantOutputFold`
+ * prefers regardless of stream.
+ */
+function normalizeAssistantEventStreams(events: unknown[]): unknown[] {
+  return events.map((event) => {
+    const e = event as { type?: string; data?: Record<string, unknown> }
+    if (
+      (e.type === 'assistant/message' || e.type === 'assistant/attempt') &&
+      e.data &&
+      e.data.stream === undefined
+    ) {
+      return { ...e, data: { ...e.data, stream: [] } }
+    }
+    return event
+  })
 }
 
 /** Full review + performance audit; resolves to the comment body that was posted. */

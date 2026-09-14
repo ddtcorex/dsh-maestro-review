@@ -71,6 +71,11 @@ describe('docker', () => {
     // only openai-completions/openai-responses are accepted (OpenAI-compatible only)
     expect(sh).toMatch(/openai-completions/)
     expect(sh).toMatch(/openai-responses/)
+    // a stable per-job x-opencode-session id is always derived and substituted,
+    // independent of any CI variable — GitLab's own CI_JOB_ID is unique per job
+    // run (one job = one review "conversation"), with a local-run fallback
+    expect(sh).toMatch(/REVIEW_LLM_SESSION_ID=.*CI_JOB_ID/)
+    expect(sh).toMatch(/__REVIEW_LLM_SESSION_ID__/)
     // no more key-based opencode/deepseek swap branch — deepseek is simply the
     // baked default with nothing left to switch away from
     expect(sh).not.toMatch(/settings\.deepseek\.yaml/)
@@ -89,6 +94,12 @@ describe('docker', () => {
     expect(yml).toMatch(/provider:\s*custom-openai/)
     expect(yml).not.toMatch(/sk-[A-Za-z0-9]{8,}/)
     expect(yml).not.toMatch(/glpat-[A-Za-z0-9_.-]{8,}/)
+    // gateways that route by conversation (e.g. OpenCode Zen's "Go" route,
+    // opencode.ai/zen/go/v1) reject requests missing a session header with a
+    // hard 400 MissingSessionID — send a stable per-job id on every route so
+    // a bring-your-own endpoint that enforces this never breaks the review.
+    expect(yml).toMatch(/headers:\s*\n\s+x-opencode-session:\s*"__REVIEW_LLM_SESSION_ID__"/)
+    // quoted so a numeric CI_JOB_ID substitution stays a YAML string, not a number
   })
 
   it('profiles/reviewer-ci pins @deepseek-ai/dsh as its own dependency, not a global install, so it shares one pnpm resolution graph with dsh-base', () => {

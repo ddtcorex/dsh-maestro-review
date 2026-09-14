@@ -52,9 +52,17 @@ if grep -q __CI_MANAGED__ /app/settings.yaml 2>/dev/null; then
         exit 1
         ;;
     esac
+    # A stable per-job session id for gateways that key routing/prompt-cache
+    # affinity off it (e.g. OpenCode Zen's Go route hard-requires
+    # x-opencode-session — see ci-settings.generic-openai.yaml). One CI job is
+    # one review "conversation", so GitLab's own CI_JOB_ID (always numeric,
+    # unique per job) is a stable id with no charset guard needed; $$ covers a
+    # local `docker run` where CI_JOB_ID is unset.
+    REVIEW_LLM_SESSION_ID="${CI_JOB_ID:-$$}"
     sed -e "s#__REVIEW_LLM_API__#${REVIEW_LLM_API}#g" \
         -e "s#__REVIEW_LLM_BASE_URL__#${REVIEW_LLM_BASE_URL}#g" \
         -e "s#__REVIEW_LLM_MODEL__#${REVIEW_LLM_MODEL}#g" \
+        -e "s#__REVIEW_LLM_SESSION_ID__#${REVIEW_LLM_SESSION_ID}#g" \
         /app/settings.generic-openai.yaml > /app/settings.yaml
   fi
 fi

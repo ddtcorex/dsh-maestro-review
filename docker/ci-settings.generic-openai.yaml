@@ -4,8 +4,16 @@
 # OpenAI-compatible endpoint (self-hosted, Azure OpenAI, OpenRouter, a private
 # gateway, ...) instead of api.deepseek.com. entrypoint.sh substitutes
 # __REVIEW_LLM_API__ (from $REVIEW_LLM_API, default openai-completions),
-# __REVIEW_LLM_BASE_URL__, and __REVIEW_LLM_MODEL__ before dsh boots.
-# Contains NO secrets — the key resolves at call time from REVIEW_LLM_API_KEY.
+# __REVIEW_LLM_BASE_URL__, __REVIEW_LLM_MODEL__, and __REVIEW_LLM_SESSION_ID__
+# before dsh boots. Contains NO secrets — the key resolves at call time from
+# REVIEW_LLM_API_KEY.
+# x-opencode-session: a routing/conversation-affinity header some gateways
+# require (e.g. OpenCode Zen's "Go" route, opencode.ai/zen/go/v1, rejects a
+# request missing it with 400 MissingSessionID — see opencode.ai/docs/go/).
+# Harmless as a stray header against gateways that ignore it, so it is always
+# sent rather than gated behind another opt-in variable. Quoted: the
+# substituted value is CI_JOB_ID, a bare integer, and an unquoted YAML scalar
+# would parse as a number — headers must be strings.
 llm-pi-ai:
   providers:
     custom-openai:
@@ -13,6 +21,8 @@ llm-pi-ai:
       apiKeyEnv: REVIEW_LLM_API_KEY
       api: __REVIEW_LLM_API__
       baseURL: __REVIEW_LLM_BASE_URL__
+      headers:
+        x-opencode-session: "__REVIEW_LLM_SESSION_ID__"
       models:
         - id: __REVIEW_LLM_MODEL__
           name: Custom Review Model
