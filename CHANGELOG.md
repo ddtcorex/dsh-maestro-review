@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.7.1] - 2026-09-14
+
+### Fixed
+
+- The generic OpenAI-compatible route (`REVIEW_LLM_*`) now sends a stable
+  `x-opencode-session` header, derived from GitLab's `CI_JOB_ID`. Gateways
+  that route/cache by conversation — OpenCode Zen's Go route
+  (`opencode.ai/zen/go/v1`) in particular — started hard-rejecting requests
+  missing it with `400 MissingSessionID`, breaking every review on a
+  project pointed at that route. (#107)
+- `auditorOutputFromSession` no longer throws on a legacy/degraded session
+  event missing `data.stream`: `@deepseek-ai/dsh-subagent` 0.1.5's
+  `AssistantOutputFold.push` iterates that field unconditionally, which
+  broke the function's documented never-throws contract. (#107)
+
+### Changed
+
+- Upgrade the pinned `@deepseek-ai/dsh-agent`, `dsh-agent-default-model`,
+  `dsh-agent-presets`, `dsh-attachment`, `dsh-llm`, `dsh-session`,
+  `dsh-session-title`, `dsh-subagent`, and `dsh-tools` devDependencies from
+  `0.1.2-rc.1` to `0.1.5-rc.2`. (#107)
+
 ## [0.7.0] - 2026-09-13
 
 ### Added
