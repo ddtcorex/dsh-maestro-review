@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.7.3] - 2026-09-14
+
+### Fixed
+
+- **0.7.2's `profiles/reviewer-ci` bump crashed the entire `dsh` boot** —
+  `docker run --entrypoint /entrypoint.sh` with real credentials
+  reproduced it locally (`GITLAB_HOST` must be the bare hostname, no
+  `https://` prefix — `ci-trigger.ts` prepends the scheme itself, a fix
+  found while root-causing this). Bumping only `dsh`/`dsh-base`/
+  `dsh-agent-presets` left ~23 of their transitive `@deepseek-ai/dsh-*`
+  deps resolved at the old `0.1.2-rc.1` line (a peer-warning-only
+  mismatch at install time, fatal at boot: e.g.
+  `dsh-session-persistence-jsonl@0.1.5-rc.2` ESM-importing
+  `SessionAlreadyExistsError` from `dsh-session-persistence@0.1.2-rc.1`,
+  which never exported it). `profiles/reviewer-ci/pnpm-workspace.yaml`
+  now overrides all of them to `0.1.5-rc.2`. Live-verified end to end
+  locally: a real review now completes (`✅ Completed`) instead of
+  crashing or failing on the persona config.
+- **0.7.2 was never actually deployed** — it crashed on the first real MR
+  it hit, so `REVIEWER_IMAGE` was reverted to `0.7.1` within the same
+  incident window before this fix shipped. No production regression
+  window beyond the immediate revert.
+
 ## [0.7.2] - 2026-09-14
 
 ### Fixed
