@@ -68,10 +68,13 @@ batch.
      style), referencing the merged PR numbers it bundles.
    - Every `0.Y.Z`-shaped image-tag reference: `docker/Dockerfile`'s
      top-comment example (`-t ddtcorex/maestro-reviewer:X.Y.Z`),
-     `templates/reviewer-project.gitlab-ci.yml`'s `REVIEWER_IMAGE`, and the
-     two mentions in `docs/ci-reviewer-setup.md` (intro + troubleshooting
-     `:latest` explanation). `grep -rn "0\.<prev-minor>\.<prev-patch>"
-     docker/ templates/ docs/` to find every instance before committing.
+     `package.json`'s own `docker:build` script (found stale at a
+     two-releases-old `0.6.0` on 2026-09-14 — nobody runs that script, so it
+     drifts silently), `templates/reviewer-project.gitlab-ci.yml`'s
+     `REVIEWER_IMAGE`, and the two mentions in `docs/ci-reviewer-setup.md`
+     (intro + troubleshooting `:latest` explanation). `grep -rn
+     "0\.<prev-minor>\.<prev-patch>" docker/ templates/ docs/ package.json`
+     to find every instance before committing.
    - `pnpm verify && pnpm test && pnpm build` clean, then PR → CI green →
      **human `APPROVED`** → squash-merge.
 2. **Tag + publish** (guarded — present the exact commands and get explicit
@@ -92,8 +95,27 @@ batch.
    branch** (mandatory, not optional — this is the step that actually makes
    the Docker image pick up the release): set
    `profiles/reviewer-ci/package.json`'s
-   `dependencies["@ddtcorex/dsh-maestro-review"]` to `X.Y.Z`, then
+   `dependencies["@ddtcorex/dsh-maestro-review"]` to `X.Y.Z` (a `^X.Y.Z`
+   range is fine and preferred — it lets the next lockfile refresh pick up a
+   later patch without a repeat of this step), then
    regenerate the lockfile with the pnpm supply-chain age gate bypassed —
+
+   **The profile's OTHER `@deepseek-ai/*` pins (`dsh`, `dsh-base`,
+   `dsh-agent-presets`) must independently track whatever the shipped
+   preset YAMLs (`presets/maestro-reviewer/agent.cordis.yml`,
+   `presets/maestro-auditor/`) actually require — bumping only the
+   `dsh-maestro-review` pin is not sufficient.** Root-caused 2026-09-14:
+   #102 (0.7.0) migrated the persona rows from a `text` field to
+   `prefix`/`suffix`, which only `@deepseek-ai/dsh-persona` ≥ some 0.1.5-line
+   version understands; the reviewer-ci profile stayed on
+   `dsh-agent-presets@0.1.2-rc.1` (whose bundled `dsh-persona` still expects
+   `text`) straight through the 0.7.0 and 0.7.1 releases, so **every review
+   failed closed** with `failed to create reviewer agent: ... invalid
+   config: $.text missing required value` — silently, because step 5 below
+   didn't exist yet and nobody re-validated end to end after finally
+   rebuilding the image. When a preset YAML's config shape changes, check
+   whether it needs a newer `dsh-agent-presets`/`dsh-persona` in
+   `profiles/reviewer-ci` too, in the same PR.
    a version published minutes ago is inside pnpm's 24h `minimumReleaseAge`
    window and a plain `pnpm install` will reject it (`ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`),
    even though the exact same flag is already baked into
@@ -122,6 +144,17 @@ batch.
    docker push ddtcorex/maestro-reviewer:X.Y.Z
    docker push ddtcorex/maestro-reviewer:latest
    ```
+5. **Bump `REVIEWER_IMAGE` in the reviewer project(s) using this image**
+   (a separate repo per deployment, e.g. a company's `reviewer_ci` — not
+   this checkout) to `X.Y.Z`, then **live-verify against a real MR before
+   calling the release done**: trigger a review that produces a fresh head
+   SHA (the push-gate skips a SHA that already has a completed run, so
+   retrying an old pipeline/job proves nothing — see
+   [Coexistence](docs/ci-reviewer-setup.md#6-coexistence-ci-yields-to-webhook)
+   for the push-gate). A green Docker push is evidence the image *built*,
+   not that a review actually completes — steps 1-4 alone shipped a silently
+   broken image twice (0.7.0, 0.7.1) before this step existed, because the
+   only feedback loop was the next real user hitting the bug days later.
 
 **Live-testing the CI image locally before/without a full release** (used
 to validate a fix before it ships): overlay a local build's `lib/` onto a
