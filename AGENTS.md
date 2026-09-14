@@ -96,9 +96,27 @@ batch.
    the Docker image pick up the release): set
    `profiles/reviewer-ci/package.json`'s
    `dependencies["@ddtcorex/dsh-maestro-review"]` to `X.Y.Z` (a `^X.Y.Z`
-   range is fine and preferred — it lets the next lockfile refresh pick up a
-   later patch without a repeat of this step), then
-   regenerate the lockfile with the pnpm supply-chain age gate bypassed —
+   range is fine to declare, but **does not self-update**: a plain `pnpm
+   install` keeps whatever version is already locked as long as it still
+   satisfies the range — pnpm does not eagerly re-resolve to the newest
+   match. This silently shipped a stale `0.7.1` through the 0.7.2 and 0.7.3
+   fixes on 2026-09-14, discovered only because those two releases
+   happened to live in files the Dockerfile copies directly from the
+   checkout (`presets/`, `profiles/reviewer-ci/pnpm-workspace.yaml`) rather
+   than in `dsh-maestro-review`'s own installed code — 0.7.4's actual fix
+   would have shipped silently absent otherwise. Always force it with
+   `pnpm update @ddtcorex/dsh-maestro-review` (not bare `install`) — and a
+   version published minutes ago is inside pnpm's 24h `minimumReleaseAge`
+   window, so bypass that too (the exact same flag is already baked into
+   `docker/Dockerfile`'s own frozen install for this reason,
+   `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION` otherwise):
+   ```sh
+   cd profiles/reviewer-ci && pnpm --config.minimumReleaseAge=0 update @ddtcorex/dsh-maestro-review
+   ```
+   Verify the resulting `git diff --stat profiles/reviewer-ci/pnpm-lock.yaml`
+   touches only that one package (specifier/resolution/integrity) before
+   committing — unrelated transitive churn is a signal something else drifted
+   and needs a closer look, not a rubber-stamp commit.
 
    **The profile's OTHER `@deepseek-ai/*` pins (`dsh`, `dsh-base`,
    `dsh-agent-presets`) must independently track whatever the shipped
@@ -116,18 +134,8 @@ batch.
    rebuilding the image. When a preset YAML's config shape changes, check
    whether it needs a newer `dsh-agent-presets`/`dsh-persona` in
    `profiles/reviewer-ci` too, in the same PR.
-   a version published minutes ago is inside pnpm's 24h `minimumReleaseAge`
-   window and a plain `pnpm install` will reject it (`ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`),
-   even though the exact same flag is already baked into
-   `docker/Dockerfile`'s own frozen install for this reason:
-   ```sh
-   cd profiles/reviewer-ci && pnpm --config.minimumReleaseAge=0 install
-   ```
-   Verify the resulting `git diff --stat profiles/reviewer-ci/pnpm-lock.yaml`
-   touches only that one package (specifier/resolution/integrity) before
-   committing — unrelated transitive churn is a signal something else drifted
-   and needs a closer look, not a rubber-stamp commit. PR → CI green →
-   `APPROVED` → merge.
+
+   PR → CI green → `APPROVED` → merge.
 4. **Rebuild and push the Docker image — only after step 3 merges:**
    ```sh
    docker build -f docker/Dockerfile -t ddtcorex/maestro-reviewer:X.Y.Z -t ddtcorex/maestro-reviewer:latest .
