@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.7.5] - 2026-09-14
+
+### Fixed
+
+- **`loadedReviewProfile()` reading `ctx.agent` never actually worked** —
+  0.7.4 stopped it from crashing (`cannot get property "agent" without
+  inject`), but `ctx.agent` is not an actual injectable Cordis service
+  anywhere in this composition, so the guarded read always returned
+  `undefined` — every profile-configured review (`REVIEW_PROFILE=magento2`
+  etc.) failed with "did not successfully load the required ... review
+  skill profile" even when the tool had just loaded it correctly. Dropped
+  Cordis entirely: `loadedReviewProfile` now takes the plain `Agent`
+  object directly (`handle.agent`, the same object the tool's own
+  `exec.agent` already used successfully) instead of a Cordis `Context`.
+- **`profiles/reviewer-ci` had `@deepseek-ai/dsh-base` as a direct
+  dependency at the same version `@deepseek-ai/dsh` already depends on it
+  — which does not dedupe them.** `pnpm why @deepseek-ai/dsh-base` showed
+  two physically distinct instances (different `peersSuffixHash`, matching
+  version string), so `@ddtcorex/maestro-skills` registered its skill
+  provider into one `skills` service instance while the reviewer agent's
+  own composition read from the other — every profile-configured review
+  reported "Missing required review skill(s)" despite every skill file
+  being present in the image. Removed the redundant direct dependency;
+  `dsh` already carries it.
+- Both root-caused and fixed with **zero release cycles**: reproduced the
+  Cordis throw directly against real `@deepseek-ai/cordis` in a test, the
+  dependency split with `pnpm why`, and the full fix end-to-end locally
+  (`docker build` + overlay `lib/` + `docker run --entrypoint
+  /entrypoint.sh` against a real disposable test MR with `REVIEW_PROFILE`
+  set) — confirmed working (`✅ Completed`, real findings posted) before
+  this release existed. See the new "Validate locally first" note at the
+  top of the release checklist in `AGENTS.md`.
+
 ## [0.7.4] - 2026-09-14
 
 ### Fixed

@@ -46,26 +46,19 @@ export const REVIEW_PROFILE_SKILLS: Record<ReviewSkillProfile, readonly string[]
 
 export const MAESTRO_SKILLS_INSTALL_COMMAND = 'curl -fsSL https://raw.githubusercontent.com/ddtcorex/maestro-skills/master/install.sh | bash -s -- --scope personal --target dsh --skills govard-toolbox,govard-magento,govard-laravel,govard-symfony,govard-wordpress,php-dev-core,magento2-dev-core,magento2-frontend-dev,magento2-hyva-dev,magento2-code-review,magento2-linter,magento2-security-scan,magento2-performance-audit -y'
 
-// This is deliberately process-local and keyed by the reviewer Agent object,
-// which every Cordis child context inherits. Preset mounting inserts child
-// contexts, so keying on the plugin's context would make a successful load
-// invisible to the orchestrator's agent context.
+// Keyed by the reviewer's Agent object itself, not a Cordis context: `ctx.agent`
+// is not an actual injectable Cordis service anywhere in this composition (it
+// throws "cannot get property agent without inject" whenever read, silently
+// making every post-turn profile check report "not loaded" even after the
+// tool above successfully set it — root-caused 2026-09-14 against a real
+// failed review, reproduced deterministically against real
+// @deepseek-ai/cordis). The tool's own `exec.agent` (a plain, non-Cordis
+// property `ToolExecutionInput` always carries, "set by the agent loop") is
+// the reliable handle — callers pass `handle.agent` from the same
+// `AgentHandle` the orchestrator already holds, which is the identical object.
 const loadedReviewProfiles = new WeakMap<object, ReviewSkillProfile>()
 
-export function loadedReviewProfile(ctx: Context): ReviewSkillProfile | undefined {
-  // Cordis's Context proxy throws synchronously on any property nobody
-  // registered/injected ("cannot get property ... without inject") rather
-  // than returning undefined — so a context where the framework's own
-  // `agent` service isn't available needs a try/catch, not just an
-  // `=== undefined` check, to actually get the "no agent yet" outcome this
-  // function documents. Root-caused 2026-09-14 against a real failed
-  // review (reproduced directly with @deepseek-ai/cordis, not a mock).
-  let agent: object | undefined
-  try {
-    agent = ctx.agent
-  } catch {
-    return undefined
-  }
+export function loadedReviewProfile(agent: object | undefined): ReviewSkillProfile | undefined {
   return agent === undefined ? undefined : loadedReviewProfiles.get(agent)
 }
 

@@ -102,12 +102,30 @@ describe('docker', () => {
     // quoted so a numeric CI_JOB_ID substitution stays a YAML string, not a number
   })
 
-  it('profiles/reviewer-ci pins @deepseek-ai/dsh as its own dependency, not a global install, so it shares one pnpm resolution graph with dsh-base', () => {
+  it('profiles/reviewer-ci pins @deepseek-ai/dsh as its own dependency, not a global install, so it shares one pnpm resolution graph', () => {
     const pkg = JSON.parse(readFileSync('profiles/reviewer-ci/package.json', 'utf-8')) as {
       dependencies?: Record<string, string>
     }
     expect(pkg.dependencies?.['@deepseek-ai/dsh']).toBeTruthy()
-    expect(pkg.dependencies?.['@deepseek-ai/dsh']).toBe(pkg.dependencies?.['@deepseek-ai/dsh-base'])
+  })
+
+  // Root-caused 2026-09-14: declaring dsh-base directly here, at the same
+  // version @deepseek-ai/dsh already depends on it, does not dedupe them —
+  // pnpm still resolves two physically distinct instances (a different
+  // peer-dependency context per requester, `pnpm why` shows two
+  // `peersSuffixHash`es), because matching version strings isn't what pnpm
+  // instance identity keys on. One instance provided the `skills` service
+  // maestro-skills registered into and the other backed the reviewer's own
+  // composition, so `ctx.skills.list()` inside the reviewer agent never saw
+  // maestro-skills' entries — every profile-configured review failed with
+  // "Missing required review skill(s)" despite the skill files being
+  // present. dsh already depends on dsh-base on its own; this asserts we
+  // never reintroduce the direct duplicate.
+  it('does not duplicate @deepseek-ai/dsh-base as a direct dependency (dsh already carries it, and duplicating it splits the pnpm instance)', () => {
+    const pkg = JSON.parse(readFileSync('profiles/reviewer-ci/package.json', 'utf-8')) as {
+      dependencies?: Record<string, string>
+    }
+    expect(pkg.dependencies?.['@deepseek-ai/dsh-base']).toBeUndefined()
   })
 
   it('ci-settings.deepseek.yaml is the sole baked default, serving deepseek-official from api.deepseek.com', () => {
