@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.7.2] - 2026-09-14
+
+### Fixed
+
+- **`profiles/reviewer-ci` was still pinned to `@deepseek-ai/dsh`/`dsh-base`/
+  `dsh-agent-presets@0.1.2-rc.1`**, whose bundled `@deepseek-ai/dsh-persona`
+  requires a `text` config field. #102 (shipped in 0.7.0) migrated the
+  reviewer/auditor presets to the `prefix`/`suffix` format that only a newer
+  `dsh-persona` understands, but the reviewer-ci profile's own pin was never
+  bumped — 0.7.0 and 0.7.1 both shipped a Docker image that failed every
+  review with `failed to create reviewer agent: ... invalid config: $.text
+  missing required value`, live-verified via a real MR on a CI-managed
+  project before this fix and confirmed silent afterward. Bumped to
+  `0.1.5-rc.2` to match; verified exactly one `@deepseek-ai/dsh-scope`
+  instance ships in the built image (no dual-instance regression).
+- `profiles/reviewer-ci`'s `@ddtcorex/dsh-maestro-review` and
+  `@ddtcorex/maestro-skills` pins now use caret ranges (`^0.7.1`, `^2.0.0`)
+  instead of exact versions, so a future patch release reaches the CI image
+  on the next profile lockfile refresh instead of silently lagging behind
+  npm the way this release's root cause did.
+
 ## [0.7.1] - 2026-09-14
 
 ### Fixed
