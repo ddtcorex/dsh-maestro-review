@@ -1120,14 +1120,12 @@ export function apply(ctx: Context, config: Config): void {
     const runOnce = async (agentOptions: ModelSelection): Promise<ReviewOutcome> => {
       let capturedFindings: ReviewFinding[] = []
       let handle: AgentHandle | undefined
-      let reviewerContext: Context | undefined
       try {
         handle = await ctx.agents.create({
           sessionId: SessionId(`maestro-reviewer-${payload.mrIid}-${Date.now()}`),
           meta: { cwd: worktreePath ?? tmpdir() },
           agentOptions,
           setup: async (agentCtx) => {
-            reviewerContext = agentCtx
             installModelSelection(agentCtx, { current: agentOptions, assembled: undefined })
             await agentCtx.plugin(ReviewToolPolicy)
             await mountAgentPreset(ctx.agentPresets, agentCtx, 'dsh-maestro-reviewer')
@@ -1173,7 +1171,7 @@ export function apply(ctx: Context, config: Config): void {
         }))
         await whenIdleWithTimeout(handle, effectiveAgentTimeoutMs)
         assertTurnSucceededOrSalvage(handle, capturedFindings.length > 0, 'reviewer')
-        if (reviewProfile !== undefined && (reviewerContext === undefined || loadedReviewProfile(reviewerContext) !== reviewProfile)) {
+        if (reviewProfile !== undefined && loadedReviewProfile(handle.agent) !== reviewProfile) {
           throw new Error(`reviewer did not successfully load the required ${reviewProfile} review skill profile; no findings were posted`)
         }
 

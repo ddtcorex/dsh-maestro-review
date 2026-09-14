@@ -52,6 +52,89 @@ pnpm build    # tsc  -> lib/
 
 ## Release checklist
 
+**Validate locally first — a release cycle is not a debug loop.** On
+2026-09-14, one bug (a Cordis DI misuse) went through **four** patch
+releases (0.7.1 → 0.7.4) before it was actually fixed, because each
+attempted fix was validated by tagging, waiting for `pnpm publish`,
+rebuilding the Docker image, pushing it, bumping `REVIEWER_IMAGE` on a
+real deployment, and triggering a real merge request — a 5-10 minute
+loop, repeated four times, entirely avoidable. **Every one of those fixes
+could have been (and the final, correct one was) validated in under a
+minute locally, with zero release steps:**
+
+- **A pure logic/API-contract bug** (wrong Cordis usage, a bad type
+  assumption): reproduce it directly against the real dependency in a
+  vitest test — no Docker, no MR. `new Context()` + `root.plugin(fn)`
+  against real `@deepseek-ai/cordis` reproduced the exact "cannot get
+  property X without inject" throw in milliseconds; that test is now a
+  permanent regression guard (`tests/profile-skills.test.ts`).
+- **A dependency-resolution bug** (peer/version skew, a duplicated direct
+  dependency splitting a pnpm instance): `pnpm why <pkg>` and `pnpm peers
+  check` inside `profiles/reviewer-ci` diagnose it without touching Docker
+  at all — `pnpm why @deepseek-ai/dsh-base` is what found two
+  `peersSuffixHash`es for one version string, root-causing a "missing
+  skills" failure no amount of log-reading found.
+- **A full end-to-end behavior change** (needs the real image, the real
+  entrypoint, a real LLM call): build the image locally
+  (`docker build -f docker/Dockerfile -t <local-tag> .`), then either
+  rebuild fully after a source change, or — to test a `src/` edit without
+  rebuilding the whole image or publishing anything — overlay the fresh
+  local `lib/` onto an already-built image's installed copy:
+  ```sh
+  docker run -d --name overlay-test --entrypoint sleep <local-tag> 3600
+  docker exec overlay-test readlink -f /app/profiles/reviewer-ci/node_modules/@ddtcorex/dsh-maestro-review
+  docker cp lib/. overlay-test:<that path>/lib/
+  docker commit overlay-test <local-tag>-fixed && docker rm -f overlay-test
+  ```
+  Then run it with **real credentials from the CI variables** (`glab api
+  projects/sutunam%2Fci%2Freviewer_ci/variables/<NAME> --hostname
+  git.sutunam.com`, piped through a variable — never printed) against a
+  **disposable test branch + MR** on a real project, exactly like the CI
+  job would: `docker run --rm -e MAESTRO_GITLAB_TOKEN=... -e
+  SOURCE_PROJECT_ID=... -e MR_IID=... -e GITLAB_HOST=<bare-hostname> ...
+  --entrypoint /entrypoint.sh <tag>`. Close the MR and delete the branch
+  immediately after — this is throwaway test traffic on someone else's
+  real repo, not a fixture.
+
+  **Gotchas proven live, in order of how much time each one wasted:**
+  1. `GITLAB_HOST` must be the **bare hostname** (`git.sutunam.com`), never
+     a full URL — `ci-trigger.ts` prepends `https://` itself, so
+     `GITLAB_HOST=https://git.sutunam.com` silently becomes
+     `https://https://git.sutunam.com/...` and every request fails as a
+     generic, unhelpful "fetch failed" with no hint why.
+  2. Exec `/entrypoint.sh` itself, not `dsh --profile reviewer-ci`
+     directly — the `REVIEW_LLM_*` bring-your-own route only activates
+     inside `entrypoint.sh`'s settings-file switch.
+  3. The push-gate (`already reviewed`), the coexistence check (`webhook
+     already reviewed`), **and stale `eyes`/`white_check_mark` award-emoji
+     markers** all key off state already on the MR — clear all three
+     before a repeat run (`glab api
+     projects/<id>/merge_requests/<iid>/award_emoji` to list, `DELETE
+     .../award_emoji/<id>` to clear), or push a genuinely fresh commit —
+     otherwise the run silently short-circuits ("skipping") without
+     exercising anything, and looks identical to a real pass.
+  4. `REVIEW_ON_PUSH` is unset by default, so a second push to an
+     already-opened MR never re-reviews — open a **fresh MR** (new branch)
+     for each independent local validation, not another push to the same
+     one.
+  5. A turn's own error message is all you get — `dsh-session`'s
+     `TurnEndReasonMap['error']` only carries `{ message, code }`
+     (`errorChain(error)` flattened, by the framework's own design), and
+     the session log itself is deleted on `handle.dispose()` once the
+     turn ends. There is no stack trace to recover after the fact from a
+     CI log or a finished container. If a generic message like "cannot get
+     property X without inject" doesn't say enough, don't re-run
+     hoping for more detail — go straight to reproducing it directly
+     against the real dependency in a test (see above), or add temporary
+     `console.error` instrumentation to the exact suspected line before
+     the next run.
+
+Only once a fix is confirmed working this way — ideally end to end against
+a real disposable MR — start the release checklist below. It should
+produce exactly one new tag, one new Docker image, one `REVIEWER_IMAGE`
+bump, and (if warranted) one final confirming live run, not a cascade of
+"tag it and see" releases.
+
 Every release ships **two independent artifacts** that must stay in lockstep:
 the npm package (`@ddtcorex/dsh-maestro-review`) and the Docker image
 (`ddtcorex/maestro-reviewer`). The Docker image installs the npm package
@@ -164,20 +247,12 @@ batch.
    broken image twice (0.7.0, 0.7.1) before this step existed, because the
    only feedback loop was the next real user hitting the bug days later.
 
-**Live-testing the CI image locally before/without a full release** (used
-to validate a fix before it ships): overlay a local build's `lib/` onto a
-running container's installed package instead of rebuilding the whole
-image — `docker cp lib/. <container>:<pnpm-store-path-to-package>/lib/`,
-found via `docker exec <container> readlink -f
-/app/profiles/reviewer-ci/node_modules/@ddtcorex/dsh-maestro-review`. Two
-gotchas proven live: (1) exec `/entrypoint.sh` itself, not `dsh --profile
-reviewer-ci` directly — the `REVIEW_LLM_*` bring-your-own route only
-activates inside `entrypoint.sh`'s settings-file switch, so execing `dsh`
-directly silently skips it. (2) the push-gate (`already reviewed`) and the
-coexistence check (`webhook already reviewed`) both key off state already
-on the MR (local `reviews.json` history file, and any existing completed-
-review comment) — clear both before a repeat test run, or the run silently
-short-circuits without exercising real code.
+See **"Validate locally first"** at the top of this checklist for the
+overlay technique, the credential-fetching pattern, and every gotcha
+proven live while testing this way (`GITLAB_HOST` format, stale
+award-emoji markers, `REVIEW_ON_PUSH`, no recoverable stack trace) — it
+belongs before step 1, not after step 5, so read it before starting a
+release, not after one goes wrong.
 
 ## Conventions
 

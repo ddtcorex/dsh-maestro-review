@@ -1,23 +1,25 @@
 import { describe, it, expect } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
 import { REVIEW_PROFILE_SKILLS, MAESTRO_SKILLS_INSTALL_COMMAND, loadedReviewProfile } from '../src/host/skills-tool.js'
 
 describe('loadedReviewProfile', () => {
-  // Root-caused 2026-09-14: a real MR review failed with "cannot get
-  // property agent without inject" — Cordis's Context proxy throws
-  // synchronously on any property nobody registered/injected, so a plain
-  // `ctx.agent === undefined` check re-throws instead of ever reaching the
-  // `=== undefined` comparison. Reproduced directly against real Cordis
-  // (not a mock): a nested plugin context lacking an `agent` service always
-  // throws on `.agent`, matching whatever mounted the reviewer's agent
-  // preset when the framework's own `agent` service wasn't registered yet.
-  it('returns undefined instead of throwing when the context has no injected agent service', async () => {
-    const root = new Context()
-    let result: ReturnType<typeof loadedReviewProfile> | 'threw' = 'threw'
-    await root.plugin((ctx) => {
-      result = loadedReviewProfile(ctx)
-    })
-    expect(result).toBeUndefined()
+  // Root-caused 2026-09-14 in two passes against a real MR review:
+  // (1) `ctx.agent` (Cordis DI) threw "cannot get property agent without
+  // inject" — Cordis's Context proxy throws synchronously on any property
+  // nobody registered/injected, crashing the whole review. (2) after
+  // guarding that read, every profile-configured review still reported
+  // "did not successfully load the required profile" even when the tool
+  // had just loaded it correctly — `ctx.agent` is not an actual injectable
+  // service anywhere in this composition, so the guarded read always
+  // returned undefined. The fix drops Cordis entirely: this now takes the
+  // plain Agent object (`handle.agent` / the tool's own `exec.agent` —
+  // `ToolExecutionInput.agent`, "set by the agent loop", the same object
+  // both sides see), which was reliable the whole time.
+  it('returns undefined for a fresh agent with no profile loaded yet', () => {
+    expect(loadedReviewProfile({})).toBeUndefined()
+  })
+
+  it('returns undefined when there is no agent at all', () => {
+    expect(loadedReviewProfile(undefined)).toBeUndefined()
   })
 })
 
