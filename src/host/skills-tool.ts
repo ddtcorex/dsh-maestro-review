@@ -53,7 +53,20 @@ export const MAESTRO_SKILLS_INSTALL_COMMAND = 'curl -fsSL https://raw.githubuser
 const loadedReviewProfiles = new WeakMap<object, ReviewSkillProfile>()
 
 export function loadedReviewProfile(ctx: Context): ReviewSkillProfile | undefined {
-  return ctx.agent === undefined ? undefined : loadedReviewProfiles.get(ctx.agent)
+  // Cordis's Context proxy throws synchronously on any property nobody
+  // registered/injected ("cannot get property ... without inject") rather
+  // than returning undefined — so a context where the framework's own
+  // `agent` service isn't available needs a try/catch, not just an
+  // `=== undefined` check, to actually get the "no agent yet" outcome this
+  // function documents. Root-caused 2026-09-14 against a real failed
+  // review (reproduced directly with @deepseek-ai/cordis, not a mock).
+  let agent: object | undefined
+  try {
+    agent = ctx.agent
+  } catch {
+    return undefined
+  }
+  return agent === undefined ? undefined : loadedReviewProfiles.get(agent)
 }
 
 // Mirrors @deepseek-ai/dsh-skill's consumer-facing `SkillRegistry` (verified
