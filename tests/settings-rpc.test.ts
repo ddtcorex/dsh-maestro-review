@@ -79,6 +79,19 @@ describe('settings-rpc PIN endpoints', () => {
     expect(maestroTunnel.getLanPin).toHaveBeenCalledTimes(1);
     expect(result.value).toEqual({ enabled: true, pin: '55556666' });
   });
+
+  it('lanPinSetEnabled reloads the proxy and reports requiresRestart', async () => {
+    // The gate is enforced by the proxy listener, not by the settings store, so
+    // a successful write alone does not mean the gate is live. The client needs
+    // this flag to render an honest "restart the tunnel" notice
+    // (dsh-maestro-config LAN card).
+    const { ctx, maestroTunnel, call } = makeCtx();
+    apply(ctx);
+    const result = await call(MAESTRO_ENDPOINTS.lanPinSetEnabled, { enabled: true }) as { ok: true; value: { enabled: boolean; requiresRestart: boolean } };
+    expect(result.value).toEqual({ enabled: true, requiresRestart: true });
+    expect(maestroTunnel.reloadConfig).toHaveBeenCalledTimes(1);
+    expect((await loadUserConfig()).lanPinEnabled).toBe(true);
+  });
 });
 
 describe('settings-rpc pinSessionTtlHours', () => {
