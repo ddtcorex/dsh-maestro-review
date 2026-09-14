@@ -11,10 +11,10 @@
     }
   },
   "dependencies": {
+    "@ddtcorex/dsh-maestro-review": "^0.7.4",
+    "@ddtcorex/maestro-skills": "^2.0.0",
     "@deepseek-ai/dsh": "0.1.5-rc.2",
-    "@deepseek-ai/dsh-base": "0.1.5-rc.2",
     "@deepseek-ai/dsh-agent-presets": "0.1.5-rc.2",
-    "@ddtcorex/dsh-maestro-review": "^0.7.1",
-    "@ddtcorex/maestro-skills": "^2.0.0"
+    "@deepseek-ai/dsh-base": "0.1.5-rc.2"
   }
 }
