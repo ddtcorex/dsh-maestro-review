@@ -1,5 +1,9 @@
 allowBuilds:
   esbuild: true
+# Day-zero DSH prereleases: minimumReleaseAgeExclude keeps only the FIRST
+# entry per package name, so an appended version stays gated while the stale
+# entry shadows it (observed 2026-09-18) — the age gate stays off.
+minimumReleaseAge: 0
 packages:
   - '../dsh-maestro-config-lib'
 overrides:
