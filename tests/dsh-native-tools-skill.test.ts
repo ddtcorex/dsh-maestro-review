@@ -10,6 +10,43 @@ const read = () => readFileSync(SKILL, 'utf-8')
 
 const FRONTMATTER = /^---\nname: dsh-native-tools\ndescription: .+\n---\n/
 
+/**
+ * Tool names this plugin registers, harvested from source rather than restated
+ * here: a hard-coded list in the test would rot exactly like the map does. The
+ * registration call is `defineTool({ name:'x', ... })` / `name: 'x'` inside the
+ * tool modules, so scanning `src/host` for those literals tracks renames.
+ */
+function registeredToolNames(source: string): string[] {
+  const names = new Set<string>()
+  for (const m of source.matchAll(/name:\s*'([a-z][a-z0-9_]*)'/g)) names.add(m[1])
+  return [...names]
+}
+
+const HOST_SOURCES = [
+  'perf-log-stats-tool.ts',
+  'layout-xml-tool.ts',
+  'hyva-theme-inspect-tool.ts',
+  'scope-split-tool.ts',
+  'phtml-escape-scan-tool.ts',
+  'module-check-tool.ts',
+  'skills-tool.ts',
+  'git-worktree-tool.ts',
+  'govard-audit-lint-tool.ts',
+]
+
+/** Names in the map that the map claims this plugin owns. */
+const OWNED_BY_THIS_PLUGIN = [
+  'maestro_perf_log_stats',
+  'layout_xml_extract',
+  'hyva_theme_inspect',
+  'maestro_review_scope_split',
+  'phtml_escape_scan',
+  'magento_module_check',
+  'maestro_get_skills',
+  'git_worktree',
+  'govard_audit_lint',
+]
+
 describe('dsh-native-tools skill', () => {
   it('ships the frontmatter the skill provider requires', () => {
     const text = read()
@@ -30,27 +67,38 @@ describe('dsh-native-tools skill', () => {
     ]) expect(text).toContain(row)
   })
 
-  it('names every native tool this plugin registers', () => {
-    const text = read()
-    // Owned here — a rename in src/host must fail this test, not silently rot the map.
-    for (const tool of [
-      'maestro_perf_log_stats',
-      'layout_xml_extract',
-      'hyva_theme_inspect',
-      'maestro_review_scope_split',
-      'phtml_escape_scan',
-      'magento_module_check',
-      'gitlab_get_mr_diff',
-    ]) expect(text, tool).toContain(tool)
+  it('names only tools that src/host actually registers', () => {
+    // The anti-rot guarantee. Previously this file only grepped the markdown,
+    // so a renamed (or never-existing) tool stayed green — `govard_lint` shipped
+    // in the map while no package registered it. Now the source is the oracle.
+    const registered = new Set(
+      HOST_SOURCES.flatMap(f => registeredToolNames(readFileSync(join(REPO_ROOT, 'src', 'host', f), 'utf-8'))),
+    )
+    for (const tool of OWNED_BY_THIS_PLUGIN)
+      expect(registered.has(tool), `${tool} is in the map but not registered in src/host`).toBe(true)
   })
 
-  it('maps the tools the sibling plugins own', () => {
+  it('fails when the map names a tool this plugin does not register', () => {
+    // Guard against the test itself going vacuous: assert the oracle rejects a
+    // name that is absent from source (the exact shape of the shipped bug).
+    const registered = new Set(
+      HOST_SOURCES.flatMap(f => registeredToolNames(readFileSync(join(REPO_ROOT, 'src', 'host', f), 'utf-8'))),
+    )
+    expect(registered.has('govard_lint')).toBe(false)
+    expect(registered.has('magento_module_check')).toBe(true)
+  })
+
+  it('names the tools the sibling govard plugin owns', () => {
     const text = read()
-    for (const tool of [
-      'govard_audit_lint',
-      'govard_deploy_plan',
-      'govard_deploy_check',
-    ]) expect(text, tool).toContain(tool)
+    for (const tool of ['govard_audit_lint', 'govard_deploy_plan', 'govard_deploy_check'])
+      expect(text, tool).toContain(tool)
+  })
+
+  it('states the required git_worktree argument', () => {
+    // worktreePath is required on every op; an example omitting it is rejected
+    // by the tool registry.
+    const text = read()
+    expect(text).toContain("git_worktree {op:'inspect', worktreePath}")
   })
 
   it('stays a tool map, not a copy of the public skill bodies', () => {

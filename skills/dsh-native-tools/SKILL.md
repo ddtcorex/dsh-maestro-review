@@ -36,7 +36,7 @@ harness-neutral words — announce, dispatch a subagent, ask your partner. On DS
 | Run shell commands, tests, git | `bash`; background via `run_in_background: true`, collect with `job_output`, stop with `job_kill` |
 | Search the web | `web_search` |
 | Look at an image file | `read_image` (text-only model: `modlens_read_image`) |
-| Ensure an isolated workspace | `git_worktree {op:'inspect'}` → {exists,branch,headSha,isClean,isWorktree} |
+| Ensure an isolated workspace | `git_worktree {op:'inspect', worktreePath}` → {exists,branch,headSha,isClean,isWorktree} (`worktreePath` is required on every op) |
 | Create a worktree | `git_worktree {op:'create', worktreePath, branch, base?}` → {created,headSha} |
 | Clean up a worktree | `git_worktree {op:'remove', worktreePath}` → {removed,dirtyFiles} |
 
@@ -47,15 +47,15 @@ Left column is the phrase the public skill uses; right column is what to call.
 | Public skill says | Tool and signature |
 |---|---|
 | native query-log stats tool | `maestro_perf_log_stats {topN?, repeatThreshold?, timeThresholdMs?}` → streaming and bounded; never hand-grep a 16–50k line log or open it as a spreadsheet |
-| native lint tool | `govard_audit_lint {worktreePath?, mode?, phpVersions?}` or `{checks:["integrity"]}` for container-free analysis; `scope: "diff"\|"project"` and `base` for the workflow-level split. Do not hand-parse text or exit codes |
+| native lint tool | `govard_audit_lint`; in the review plugin `{worktreePath?, scope?: "diff"\|"project", base?}` — the workflow quick/deep split; in the govard plugin `{worktreePath?, mode?, phpVersions?}` or `{checks:["integrity"]}` for container-free analysis. Do not hand-parse text or exit codes |
 | native deploy preflight | `govard_deploy_plan {remote, build?, artifactDir?}` prints the pipeline without connecting; `govard_deploy_check {remote, build?, artifactDir?}` runs it. Both read-only, `remote` required. Running a deploy stays in the terminal |
 | native layout extraction | `layout_xml_extract {changedFiles:<MR layout files>}` → handles/blocks/moves + templateExists/parseError |
 | native theme inspection | `hyva_theme_inspect {classes:["<class-from-diff>"]}` → `{themes[],tailwind:{major,...},hyvaPackages[]}`; a null field means downgrade to a question |
 | native review scope split | `maestro_review_scope_split {diffStats:{files,addedLinesPerFile}, mode}` → `{split:{quick,deep},reason,estimatedSavingsTokens}`; run quick checks only on quick files |
-| native escape scan | `phtml_escape_scan {scope:"diff", paths:<changed phtml>}` → `{findings[],scannedFiles}` with confidence + M2-SEC-xxx. There is also `hyva_csp_scan` for CSP work; neither truncates silently |
-| native module check | `magento_module_check {modulePath:"app/code/Vendor/Module"}` → issues[{severity,rule,file,line}], null when the module is absent |
+| native escape scan | `phtml_escape_scan {scope:"diff", paths:<changed phtml>}` → `{findings[],scannedFiles,truncated}` with confidence + M2-SEC-xxx; `hyva_csp_scan {maxFiles?}` covers CSP work and truncates at `maxFiles` with no `truncated` flag — size the input yourself |
+| native module check | `magento_module_check {modulePath:"app/code/Vendor/Module"}` → `{modules[],scannedModules,truncated}`; always check `scannedModules` against what you expected |
 | native MR diff | `gitlab_get_mr_diff`, `gitlab_list_own_review_threads`, `gitlab_post_inline_comment` — diff plus own threads plus inline comments in one call |
-| local govard lints inside a review worktree | `govard_lint` (worktree-scoped); `govard_shell` runs one command in the container |
+| local lint inside a review worktree | `govard_audit_lint` (see the lint row above); `govard_shell` runs one command in the container |
 
 The `maestro_get_skills` tool searches this same skill catalogue by keyword and
 returns full content — useful when a review profile has not preloaded a skill.
