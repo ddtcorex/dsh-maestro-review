@@ -1,7 +1,14 @@
-# dsh-maestro-review bundle patch — 3 rows as spec §4
+# dsh-maestro-review bundle patch — 4 rows as spec §4
 # RPC channel: /dsh-maestro-review (loopback, see src/index.ts + src/settings-rpc.ts)
 # channel: /dsh-maestro-review
 - insert:
+    # Mounts the package root (lib/index.js -> apply()). Required: `dsh plugin add`
+    # applies ONLY the rows in this file, so without it the skill-provider
+    # registration inside apply() never runs and the bundled dsh-native-tools
+    # skill is silently absent. inject lists the services apply() reads.
+    - id: maestro-review-host
+      name: '@ddtcorex/dsh-maestro-review'
+      inject: ['connection', 'skills']
     - id: maestro-review-webhook
       name: '@ddtcorex/dsh-maestro-review/lib/providers/gitlab.js'
       config:
