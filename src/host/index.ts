@@ -28,13 +28,10 @@ export function apply(ctx: Context): void {
     try { (ctx as any).logger?.warn?.(`[review] skill provider effect failed: ${e?.message ?? String(e)}`) } catch {}
   }
 
-  ctx.effect(() => ctx.connection.rpc.handle('/dsh-maestro-review', async (endpoint, payload) => {
-    if (endpoint === 'status') return { ok: true, value: { provider: 'gitlab' } }
-    if (endpoint === 'providers') return { ok: true, value: { providers: ['gitlab', 'github'] } }
-    if (endpoint === 'review') {
-      const body = payload as Record<string, unknown> | undefined
-      return { ok: true, value: { received: true, provider: (body as any)?.provider ?? 'gitlab' } }
-    }
-    return { ok: false, error: { code: 'bad-request', message: `Unknown endpoint: ${endpoint}`, details: { issues: [{ message: String(endpoint) }] } as any } }
-  }, { authority: 'loopback' }), 'maestro-review rpc')
+  // No RPC registration here on purpose. The channel belongs to settings-rpc.ts
+  // (row `maestro-review-settings-rpc`), which implements the real endpoints. A
+  // stub in this file used to claim the same channel; that stayed invisible only
+  // because apply() was never mounted. Once the `maestro-review-host` row made
+  // apply() run, both registrations collided and the Settings card died with:
+  //   webserver: duplicate prefix route "/dsh-maestro-review"
 }
