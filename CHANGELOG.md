@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.8.1] - 2026-09-23
+
+### Fixed
+
+- **A headless/CI profile can mount the plugin again.** The host row declared
+  `inject: ['connection', 'skills']` while `apply()` reads only `skills`, so on
+  a profile with no web `connection` the row stayed pending forever and the
+  boot failed with `1 entry did not activate @ddtcorex/dsh-maestro-review:
+  pending (waiting for service: connection)` — the failure the published
+  reviewer-ci image hit on a real GitLab run. The row now declares the one
+  service it reads, and a regression test slices the mounted row (#124).
+- **Two detached promises can no longer reach the host's fatal
+  unhandled-rejection path** (`installFailLoud` exits the whole process): the
+  GitLab webhook handler now answers 500 and logs instead of escaping, and the
+  fire-and-forget Telegram digest chain gains a terminal catch alongside its
+  existing delivery-result check (#125).
+
+### Changed
+
+- Retarget every exact `@deepseek-ai/dsh-*` pin to `0.1.7-alpha.2` and align the
+  vendor peer ranges with upstream's `workspace-release-ranges` policy
+  (`~4.0.4` cordis, `~3.18.4` schemastery). `@deepseek-ai/dsh-agent-presets`
+  stays at `0.1.6-alpha.2` — that package publishes no `0.1.7-alpha.2` (#125).
+
 ## [0.8.0] - 2026-09-22
 
 ### Added
