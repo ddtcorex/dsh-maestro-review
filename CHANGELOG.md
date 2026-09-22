@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.8.0] - 2026-09-22
+
+### Added
+
+- **The DSH native-tools skill is served from this plugin** (#119).
+
+### Fixed
+
+- **`apply()` no longer claims the settings RPC channel** (#120).
+- **The workflow worker row is renamed for the DSH 0.1.6 PTC runtime** (#118).
+- **`requiresRestart` is reported from the LAN PIN toggle** (#117).
+
+### Changed
+
+- Bump the `@deepseek-ai/*` pins to `0.1.7-alpha.1` (#122) and move to
+  vitest 3 so the suite loads the DSH 0.1.6 peers (#121).
+- Pin the `reviewer-ci` profile to `dsh-maestro-review@0.7.5` (#116).
+
 ## [0.7.5] - 2026-09-14
 
 ### Fixed
