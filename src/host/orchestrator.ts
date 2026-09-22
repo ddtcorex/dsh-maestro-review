@@ -1394,6 +1394,13 @@ export function apply(ctx: Context, config: Config): void {
           if (!result.sent && result.reason === 'request-failed') {
             console.error(`maestro-orchestrator: Telegram review notification for MR !${String(payload.mrIid)} failed to deliver`)
           }
+        }).catch((err) => {
+          // Delivery is fire-and-forget: a rejection must not escape into the
+          // host's unhandled-rejection path, which exits the whole process.
+          console.error(
+            `maestro-orchestrator: Telegram review notification for MR !${String(payload.mrIid)} threw:`,
+            err instanceof Error ? err.message : err,
+          )
         })
       }
       /** First line + bounded excerpt of a posted report, for the history log.

@@ -146,6 +146,12 @@ export function apply(ctx: Context, config: Config): void {
           ctx.emit('maestro/review-request', request)
         }
         res.writeHead(200).end()
+      }).catch((err) => {
+        // The handler runs detached from the server's request callback: an
+        // escaping rejection reaches the host's unhandled-rejection path and
+        // exits the process, so answer 500 and keep the webhook alive.
+        console.error('maestro-review-webhook: handler failed:', err instanceof Error ? err.message : err)
+        try { res.writeHead(500).end() } catch { /* the response was already sent */ }
       })
     }
   }
