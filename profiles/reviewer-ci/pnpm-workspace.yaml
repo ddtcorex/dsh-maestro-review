@@ -7,46 +7,17 @@
 # printed "Scope: all 2 workspace projects" and resolved relative to `../..`
 # without this file present).
 packages: []
-# Force the whole @deepseek-ai/dsh-* core dependency graph to one coherent
-# 0.1.5-rc.2 line. Bumping only dsh/dsh-base/dsh-agent-presets (the packages
-# this profile declares directly) left ~23 of THEIR transitive deps resolved
-# at the older 0.1.2-rc.1 they used to be pinned to, because nothing in the
-# graph forced them past whatever loose range their other consumers still
-# declared. The mismatch is silent at install time (a peer warning only) but
-# fatal at boot: a newer consumer ESM-imports a symbol the older peer's build
-# never exported (e.g. dsh-session-persistence-jsonl@0.1.5-rc.2 importing
-# SessionAlreadyExistsError from dsh-session-persistence@0.1.2-rc.1, which
-# doesn't have it), crashing the whole plugin tree with exit 1 — root-caused
-# 2026-09-14 by reproducing the crash locally (`docker run --entrypoint
-# /entrypoint.sh` with real credentials; GITLAB_HOST must be the bare
-# hostname, no `https://` prefix — ci-trigger.ts prepends the scheme itself).
-# pnpm reads `overrides:` here, NOT from package.json, on pnpm 11 (see the
-# dsh-invariants override above/below for the same gotcha in the sibling
-# workspace). Every package below is confirmed to publish a 0.1.5-rc.2.
-overrides:
-  '@deepseek-ai/dsh-attachment': 0.1.5-rc.2
-  '@deepseek-ai/dsh-session-persistence': 0.1.5-rc.2
-  '@deepseek-ai/dsh-fs': 0.1.5-rc.2
-  '@deepseek-ai/dsh-code-runtime': 0.1.5-rc.2
-  '@deepseek-ai/dsh-compaction': 0.1.5-rc.2
-  '@deepseek-ai/dsh-settings': 0.1.5-rc.2
-  '@deepseek-ai/dsh-hook-protocol': 0.1.5-rc.2
-  '@deepseek-ai/dsh-jobs': 0.1.5-rc.2
-  '@deepseek-ai/dsh-sandbox': 0.1.5-rc.2
-  '@deepseek-ai/dsh-session-query': 0.1.5-rc.2
-  '@deepseek-ai/dsh-util-time': 0.1.5-rc.2
-  '@deepseek-ai/dsh-shell': 0.1.5-rc.2
-  '@deepseek-ai/dsh-sdk-protocol': 0.1.5-rc.2
-  '@deepseek-ai/dsh-anonymous-user-id': 0.1.5-rc.2
-  '@deepseek-ai/dsh-output-retention': 0.1.5-rc.2
-  '@deepseek-ai/dsh-spill': 0.1.5-rc.2
-  '@deepseek-ai/dsh-workflow': 0.1.5-rc.2
-  '@deepseek-ai/dsh-util-workspace-path': 0.1.5-rc.2
-  '@deepseek-ai/dsh-bash-local': 0.1.5-rc.2
-  '@deepseek-ai/dsh-authorization': 0.1.5-rc.2
-  '@deepseek-ai/dsh-session-telemetry': 0.1.5-rc.2
-  '@deepseek-ai/dsh-session-title-llm': 0.1.5-rc.2
-  '@deepseek-ai/dsh-subagent-in-process-driver': 0.1.5-rc.2
+# No `overrides:` block on the 0.1.7-alpha.2 line, deliberately. The 0.1.5-rc.2
+# profile needed one because those packages declared loose ranges, so ~23 of
+# their transitive deps resolved back to the older 0.1.2-rc.1 — silent at
+# install time (a peer warning only), fatal at boot: a newer consumer
+# ESM-imported a symbol the older peer's build never exported (e.g.
+# dsh-session-persistence-jsonl@0.1.5-rc.2 importing SessionAlreadyExistsError
+# from dsh-session-persistence@0.1.2-rc.1), crashing the whole plugin tree with
+# exit 1. Every `@deepseek-ai/dsh-*` package on the alpha.2 line pins its own
+# graph exactly, so the same install needs no forcing (verified 2026-09-23:
+# 281 @deepseek-ai packages installed, zero duplicate package names, one
+# cordis@4.0.4 that satisfies the plugin's `~4.0.4` peer).
 # Postinstall scripts required at runtime (node-pty/subprocess-local spawn
 # agents, koffi/protobufjs/genai serve model IO). Exact versions pinned in
 # pnpm-lock.yaml; review on every profile dep bump.
@@ -56,8 +27,10 @@ allowBuilds:
   koffi: true
   node-pty: true
   protobufjs: true
+# pnpm keeps only the FIRST entry per package name, so bumping our own
+# release means REPLACING its entry — appending the newer version leaves it
+# shadowed by the stale one and the 24h age gate keeps rejecting it (observed
+# 2026-09-18). The Docker build additionally passes
+# --config.minimumReleaseAge=0.
 minimumReleaseAgeExclude:
-  - '@ddtcorex/dsh-maestro-review@0.3.1'
-  - '@ddtcorex/maestro-skills@2.11.0'
-  - '@ddtcorex/dsh-maestro-review@0.5.1'
-  - '@ddtcorex/maestro-skills@2.11.1'
+  - '@ddtcorex/dsh-maestro-review@0.8.1'
