@@ -35,7 +35,7 @@ harness-neutral words — announce, dispatch a subagent, ask your partner. On DS
 | Write / edit files | `write`, `edit` (read before edit) |
 | Run shell commands, tests, git | `bash`; background via `run_in_background: true`, collect with `job_output`, stop with `job_kill` |
 | Search the web | `web_search` |
-| Look at an image file | `read_image` (text-only model: `modlens_read_image`) |
+| Look at an image file | `read_image` |
 | Ensure an isolated workspace | `git_worktree {op:'inspect', worktreePath}` → {exists,branch,headSha,isClean,isWorktree} (`worktreePath` is required on every op) |
 | Create a worktree | `git_worktree {op:'create', worktreePath, branch, base?}` → {created,headSha} |
 | Clean up a worktree | `git_worktree {op:'remove', worktreePath}` → {removed,dirtyFiles} |
