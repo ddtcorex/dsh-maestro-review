@@ -288,7 +288,7 @@ export function apply(ctx: Context): void {
     }
     return fail(`Unknown endpoint: ${endpoint}`)
   }
-  const disposeRpc = ctx.connection.rpc.handle(MAESTRO_RPC_CHANNEL, handler, { authority: 'loopback' })
+  const disposeRpc = ctx.connection.rpc.handle(MAESTRO_RPC_CHANNEL, handler)
 
   ctx.effect(() => () => { disposeRpc(); }, 'maestro-settings-rpc teardown')
 }

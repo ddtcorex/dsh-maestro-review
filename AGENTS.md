@@ -260,7 +260,7 @@ release, not after one goes wrong.
 - **Tool-only review subagents** — review/audit subagents run with tool-only presets; findings are written via `review-findings` tool, not free text.
 - **Secrets** — compare PINs/tokens with `secure-compare.ts`; never log or commit real tokens. In CI, `MAESTRO_GITLAB_TOKEN` must be a PAT/group token (`api` scope) — `CI_JOB_TOKEN` is read-only for posting (probed on GitLab 18.11); redact it from clone URLs and errors.
 - **CI flow** — `providers/ci-trigger.ts` owns the push-gate + coexistence yield; the orchestrator's CI-deep branch clones and reuses `runReviewAndAudit` with a plain worktree (no vendor/govard linking) and a static-only auditor prompt. Webhook behavior stays untouched: CI yields, never the reverse.
-- Keep host (network/webhook/orchestration) and client (settings UI) split; RPC is loopback authority.
+- Keep host (network/webhook/orchestration) and client (settings UI) split. RPC confinement is a transport property, not a registration option: `connection.rpc.handle(channel, handler)` takes exactly two parameters, so never pass an `{ authority: 'loopback' }` third argument (it is silently ignored); loopback is reported by `connection.isLoopback`.
 
 ## Validation
 

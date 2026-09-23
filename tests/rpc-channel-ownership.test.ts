@@ -35,7 +35,10 @@ describe('review RPC channel ownership', () => {
   it('leaves the real handler owning the channel constant', () => {
     const settings = read('src/host/settings-rpc.ts')
     expect(settings).toContain(`export const MAESTRO_RPC_CHANNEL = '${channel}'`)
-    expect(settings).toContain('rpc.handle(MAESTRO_RPC_CHANNEL, handler, { authority: \'loopback\' })')
+    // handle() takes exactly (channel, handler) — a third `authority` argument
+    // is not part of the API and is silently ignored at runtime.
+    expect(settings).toContain('rpc.handle(MAESTRO_RPC_CHANNEL, handler)')
+    expect(settings).not.toContain('authority')
   })
 
   it('still serves the skill provider from apply()', () => {
