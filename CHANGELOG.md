@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.9.0] - 2026-09-24
+
+### Changed
+
+- **Retarget the suite to DSH `0.1.7-rc.1`.** Every exact `@deepseek-ai/dsh-*`
+  dev pin and the reviewer-ci profile's `@deepseek-ai/dsh` move to the newest
+  published runtime, and both lockfiles are regenerated from scratch: an
+  in-place `pnpm install` keeps stale transitive resolutions
+  (`@deepseek-ai/cordis-plugin-group@1.0.2` against a `~1.0.4` peer,
+  `@deepseek-ai/cordis-plugin-include@1.0.7` against `~1.0.9`) that the image
+  then ships through its `--frozen-lockfile` install. The retired plural
+  `@deepseek-ai/dsh-agent-presets` leaves the reviewer-ci profile for
+  `@deepseek-ai/dsh-agent-preset-registry`, and `@deepseek-ai/dsh-client-connection`
+  joins the devDependencies so the plugin's own RPC types resolve from the
+  runtime instead of an auto-installed 0.1.1 graph (#131).
+- **The reviewer and auditor presets ship inside the plugin bundle.** DSH 0.1.7
+  declares agent presets from loader rows and no longer scans
+  `$DSH_HOME/.agent-presets`, so `presets/maestro-{reviewer,auditor}.patch.yml`
+  — listed in this package's `dsh.bundle.patch` — replace the directory
+  presets, the Dockerfile's `.agent-presets` COPY is gone, and every profile
+  composing the bundle (the headless CI profile and the web app alike) declares
+  them itself. A deployment that inserted `preset-dsh-maestro-reviewer`/
+  `-auditor` in its own patch must drop that copy or override by bare id before
+  its next boot, or the bundle row and the profile row collide as duplicates
+  (#132).
+
+### Fixed
+
+- The hand-rolled `connection.rpc.handle` type no longer advertises an `opts`
+  third parameter the Host never reads (#131).
+
 ## [0.8.1] - 2026-09-23
 
 ### Fixed
