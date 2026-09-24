@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@ddtcorex/dsh-maestro-review':
-        specifier: ^0.8.1
-        version: 0.8.1(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-client-connection@0.1.7-rc.1(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.1.7-rc.1(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-scope@0.1.7-rc.1(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.1.7-rc.1(@deepseek-ai/cordis@4.0.4))))
+        specifier: ^0.9.0
+        version: 0.9.0(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-client-connection@0.1.7-rc.1(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.1.7-rc.1(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-scope@0.1.7-rc.1(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.1.7-rc.1(@deepseek-ai/cordis@4.0.4))))
       '@ddtcorex/maestro-skills':
         specifier: ^2.13.0
         version: 2.15.0(@deepseek-ai/cordis@4.0.4)
@@ -150,12 +150,12 @@ packages:
     resolution: {integrity: sha512-Y49E02KEjXVFOe1SbBpACNpRMcd6PXPg25o9gjy7iRe2Y60rOXv2bcAcvzf4lgt+OCmrqzMKdVpGDTTIcJwW3g==}
     engines: {node: ^22.19.0 || >=24.0.0}
 
-  '@ddtcorex/dsh-maestro-review@0.8.1':
-    resolution: {integrity: sha512-VjBsMqdL3LR3tZZzVLKRmsjT6kY3xLioS7EMq19AYTtQIyxrvM7KM9AHAZLOaq1E9+fZk2zqEnX+bPB/oXL8lA==}
+  '@ddtcorex/dsh-maestro-review@0.9.0':
+    resolution: {integrity: sha512-e1/bNzP/y0zpDIQbKd3vfz5AH+6C2trM0FTk2Ph5mTWZM13Q6XiECpB9mWFy54nkm5Z8bZq7jANH+FA0yZ5Rvg==}
     engines: {node: ^22.19.0 || >=24.0.0}
     peerDependencies:
       '@deepseek-ai/cordis': ~4.0.4
-      '@deepseek-ai/dsh-client-connection': ^0.1.0-rc.6 || >=0.1.1-rc.0 <0.2.0
+      '@deepseek-ai/dsh-client-connection': ^0.1.0-rc.6 || >=0.1.1-rc.0 <0.2.0-0
 
   '@ddtcorex/maestro-skills@2.15.0':
     resolution: {integrity: sha512-KQ8cBmrlNTu99cdzuYWU+bKXyVJXJx0GJOLNa69+3J1hY7t4SPrkfydEHg2YuYtqGnvBszXYUsMOZf7HMkpGrg==}
@@ -3876,7 +3876,7 @@ snapshots:
 
   '@ddtcorex/dsh-maestro-config-lib@0.3.0': {}
 
-  '@ddtcorex/dsh-maestro-review@0.8.1(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-client-connection@0.1.7-rc.1(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.1.7-rc.1(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-scope@0.1.7-rc.1(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.1.7-rc.1(@deepseek-ai/cordis@4.0.4))))':
+  '@ddtcorex/dsh-maestro-review@0.9.0(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-client-connection@0.1.7-rc.1(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.1.7-rc.1(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-scope@0.1.7-rc.1(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.1.7-rc.1(@deepseek-ai/cordis@4.0.4))))':
     dependencies:
       '@ddtcorex/dsh-maestro-config-lib': 0.3.0
       '@deepseek-ai/cordis': 4.0.4(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.5)
