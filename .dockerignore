@@ -1,6 +1,7 @@
-# Build context is the package directory; only profiles/reviewer-ci,
-# presets/maestro-reviewer, presets/maestro-auditor, and docker/ are
-# actually COPYed (see docker/Dockerfile's COPY lines). Allowlist rather
+# Build context is the package directory; only profiles/reviewer-ci and
+# docker/ are actually COPYed (see docker/Dockerfile's COPY lines). The agent
+# presets are not part of the context at all any more — they travel inside the
+# published npm package as bundle patch files (#132). Allowlist rather
 # than denylist: a denylist needs updating every time something new is
 # added to the package (it previously missed src/, client/, templates/,
 # .github/, .claude/, presets/maestro-coder/, and the locally-growing
@@ -8,8 +9,6 @@
 # whatever it forgets.
 *
 !profiles/reviewer-ci
-!presets/maestro-reviewer
-!presets/maestro-auditor
 !docker
 # Never ship a local dev install — the Dockerfile installs its own inside
 # the build (pnpm --dir profiles/reviewer-ci install --frozen-lockfile).
