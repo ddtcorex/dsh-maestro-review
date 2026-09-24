@@ -42,7 +42,6 @@ declare module '@deepseek-ai/cordis' {
     agentDefaultModel: {
       currentSelection(): ModelSelection
     }
-    agentPresets: { mount(agentCtx: Context, id: string): Promise<unknown> | unknown }
     sessionTitle: { rename(session: unknown, title: string): Promise<unknown> | unknown }
     /** Current agent identity inside an agent-scoped context (WeakMap key). */
     agent?: object
