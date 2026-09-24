@@ -63,7 +63,11 @@
   },
   "dsh": {
     "bundle": {
-      "patch": "./cordis.patch.yml"
+      "patch": [
+        "./cordis.patch.yml",
+        "./presets/maestro-reviewer.patch.yml",
+        "./presets/maestro-auditor.patch.yml"
+      ]
     }
   },
   "packageManager": "pnpm@11.7.0"

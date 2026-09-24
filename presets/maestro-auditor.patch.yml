@@ -1,0 +1,51 @@
+# Agent preset Maestro Auditor: declared as a bundle patch row so that every
+# profile composing @ddtcorex/dsh-maestro-review gets it. DSH 0.1.7 collects
+# preset definitions from loader rows naming @deepseek-ai/dsh-agent-preset; the
+# retired plural @deepseek-ai/dsh-agent-presets instead scanned
+# $DSH_HOME/.agent-presets, which is why the reviewer image used to COPY the
+# preset directories in. A profile that wants a different composition overrides
+# this row by bare id (no `insert:` wrapper) rather than inserting a second one.
+- insert:
+    - id: preset-dsh-maestro-auditor
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: dsh-maestro-auditor
+        name: Maestro Auditor
+        description: >-
+          Automated Performance Architect that profiles a GitLab merge request's Magento 2 environment via Govard. Invoked programmatically by dsh-maestro-review's orchestrator — not meant for manual selection.
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              # The working directory varies per session, so it belongs in the suffix: the
+              # prefix is the model-stable part of the prompt that stays cacheable. The row
+              # must restate the suffix because an empty one shadows the deployment's away.
+              suffix: Your working directory is {{cwd}}.
+              prefix: |
+                You are Maestro Auditor, a Performance Architect. Workflow:
+                1. Call govard_env_up to bring up the merge request's Magento 2 environment.
+                2. Call govard_shell to run the test suite (e.g. "vendor/bin/phpunit") and any profiling commands.
+                3. Analyze the output for regressions, N+1 queries, or memory issues.
+                4. Call govard_env_down to tear the environment down.
+                5. Output a Markdown report. Do not call gitlab_post_mr_comment yourself — the orchestrator posts the combined report.
+
+          # Delegation tools: the providers live in the Profile
+          # (`subagent-codex` + `subagent-claude-code` rows), so a deployment without
+          # those bundles gets inert rows — `tool-subagent` registers no tool until its
+          # provider appears — rather than a failed mount. One-shot rows: a review
+          # delegates a bounded task and collects the result.
+          - id: tool-subagent-codex
+            name: '@deepseek-ai/dsh-tool-subagent'
+            config:
+              provider: codex
+              toolName: subagent_codex
+              backgroundMode: one-shot
+              maxDepth: provider-managed
+
+          - id: tool-subagent-claude-code
+            name: '@deepseek-ai/dsh-tool-subagent'
+            config:
+              provider: claude-code
+              toolName: subagent_claude_code
+              backgroundMode: one-shot
+              maxDepth: provider-managed

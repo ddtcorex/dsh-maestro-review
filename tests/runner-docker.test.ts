@@ -25,8 +25,11 @@ describe('docker', () => {
     expect(df).toMatch(/COPY profiles\/reviewer-ci \.\/profiles\/reviewer-ci/)
     expect(df).toMatch(/pnpm --dir profiles\/reviewer-ci .* install --frozen-lockfile/)
     expect(df).toMatch(/ENV DSH_HOME=\/app\s*$/m)
-    expect(df).toMatch(/\.agent-presets\/dsh-maestro-reviewer/)
-    expect(df).toMatch(/\.agent-presets\/dsh-maestro-auditor/)
+    // Agent presets ship as bundle patch rows from the plugin package itself
+    // (see tests/reviewer-ci-cordis-patch.test.ts); the .agent-presets COPY is
+    // gone with the provider that used to read that directory.
+    expect(df).not.toMatch(/COPY presets\//)
+    expect(df).not.toMatch(/\.agent-presets\//)
     // deepseek is the sole baked default; opencode was removed entirely
     expect(df).toMatch(/ci-settings\.deepseek\.yaml \/app\/settings\.yaml/)
     expect(df).toMatch(/ci-settings\.generic-openai\.yaml \/app\/settings\.generic-openai\.yaml/)

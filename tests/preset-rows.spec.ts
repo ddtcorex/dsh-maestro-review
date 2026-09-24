@@ -5,7 +5,11 @@ import { fileURLToPath } from 'node:url'
 
 const PRESETS = join(fileURLToPath(new URL('..', import.meta.url)), 'presets')
 
-/** Preset directory under `presets/`, and the preset id the Dockerfile installs it as. */
+/**
+ * Preset names asserted below. The reviewer and auditor are declared as bundle
+ * patch rows (`presets/<name>.patch.yml`) because that is what DSH 0.1.7 reads;
+ * maestro-coder is still a directory preset, materialized by its consumer.
+ */
 const PRESET_DIRS = ['maestro-reviewer', 'maestro-auditor', 'maestro-coder'] as const
 
 /** The `- id: <id>` row block, ended by the next row at any indentation. */
@@ -21,7 +25,10 @@ function rowBlock(yml: string, id: string): string {
   return block.join('\n')
 }
 
-const read = (dir: string): string => readFileSync(join(PRESETS, dir, 'agent.cordis.yml'), 'utf8')
+const read = (name: string): string =>
+  name === 'maestro-coder'
+    ? readFileSync(join(PRESETS, name, 'agent.cordis.yml'), 'utf8')
+    : readFileSync(join(PRESETS, `${name}.patch.yml`), 'utf8')
 
 describe.each(PRESET_DIRS)('%s persona row', (dir) => {
   const block = rowBlock(read(dir), 'persona')
