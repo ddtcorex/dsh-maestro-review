@@ -59,10 +59,17 @@
 
 # New rows this profile needs that dsh-base/dsh-maestro-review don't already provide.
 - insert:
-    # @deepseek-ai/dsh-agent-presets ships no dsh.bundle.patch of its own
-    # (confirmed — no "dsh" field in its package.json), so it never self-composes;
-    # every profile that wants it must insert this row itself, copied verbatim
-    # from deepseek-harness/packages/bundle/web-app/cordis.patch.yml.
+    # The plural @deepseek-ai/dsh-agent-presets is DELIBERATE, not stale: it is
+    # the only provider that reads $DSH_HOME/.agent-presets, where the
+    # Dockerfile copies the reviewer/auditor presets. Its 0.1.7-line successor
+    # @deepseek-ai/dsh-agent-preset-registry declares presets from loader rows
+    # ('preset-<id>' rows naming @deepseek-ai/dsh-agent-preset) and has no
+    # directory scan at all, so swapping this row alone would boot cleanly and
+    # then fail to mount 'dsh-maestro-reviewer' at review time. Port both
+    # presets into preset rows before swapping; tests/reviewer-ci-cordis-patch.test.ts
+    # fails a swap that does not. (Also: the package ships no dsh.bundle.patch of
+    # its own — no "dsh" field in its package.json — so it never self-composes
+    # and every profile that wants it must insert this row itself.)
     - id: agent-presets
       name: '@deepseek-ai/dsh-agent-presets'
       config:
