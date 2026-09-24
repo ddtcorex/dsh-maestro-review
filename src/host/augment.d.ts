@@ -16,7 +16,10 @@ import '@deepseek-ai/cordis'
 declare module '@deepseek-ai/cordis' {
   interface Context {
     webServer: { port: number; register: any }
-    connection: { rpc: { handle: (channel: string, handler: any, opts?: any) => () => void; call: any } }
+    // `handle` takes exactly (channel, handler): the Host never read an
+    // `{ authority: 'loopback' }` third argument, so this shape must not
+    // advertise one (dropped at the call site in #129).
+    connection: { rpc: { handle: (channel: string, handler: any) => () => void; call: any } }
     maestroTunnel: {
       status(): any
       start(): Promise<any>
@@ -42,7 +45,6 @@ declare module '@deepseek-ai/cordis' {
     agentDefaultModel: {
       currentSelection(): ModelSelection
     }
-    agentPresets: { mount(agentCtx: Context, id: string): Promise<unknown> | unknown }
     sessionTitle: { rename(session: unknown, title: string): Promise<unknown> | unknown }
     /** Current agent identity inside an agent-scoped context (WeakMap key). */
     agent?: object

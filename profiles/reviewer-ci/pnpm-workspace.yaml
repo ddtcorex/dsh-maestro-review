@@ -7,7 +7,7 @@
 # printed "Scope: all 2 workspace projects" and resolved relative to `../..`
 # without this file present).
 packages: []
-# No `overrides:` block on the 0.1.7-alpha.2 line, deliberately. The 0.1.5-rc.2
+# No `overrides:` block on the 0.1.7-rc.1 line, deliberately. The 0.1.5-rc.2
 # profile needed one because those packages declared loose ranges, so ~23 of
 # their transitive deps resolved back to the older 0.1.2-rc.1 — silent at
 # install time (a peer warning only), fatal at boot: a newer consumer
