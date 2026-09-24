@@ -11,7 +11,7 @@
     }
   },
   "dependencies": {
-    "@ddtcorex/dsh-maestro-review": "^0.8.1",
+    "@ddtcorex/dsh-maestro-review": "^0.9.0",
     "@ddtcorex/maestro-skills": "^2.13.0",
     "@deepseek-ai/dsh": "0.1.7-rc.1",
     "@deepseek-ai/dsh-agent-preset-registry": "0.1.7-rc.1"
