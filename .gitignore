@@ -5,3 +5,6 @@ lib/
 # Re-include coordination files ignored by the global core.excludesFile
 !AGENTS.md
 !CLAUDE.md
+
+# DSH scaffolds this profile root entry list on load; never commit it.
+profiles/reviewer-ci/cordis.yml

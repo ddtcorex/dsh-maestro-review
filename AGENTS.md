@@ -202,9 +202,9 @@ batch.
    and needs a closer look, not a rubber-stamp commit.
 
    **The profile's OTHER `@deepseek-ai/*` pins (`dsh`, `dsh-base`,
-   `dsh-agent-presets`) must independently track whatever the shipped
-   preset YAMLs (`presets/maestro-reviewer/agent.cordis.yml`,
-   `presets/maestro-auditor/`) actually require — bumping only the
+   `dsh-agent-preset-registry`) must independently track whatever the shipped
+   preset patch files (`presets/maestro-reviewer.patch.yml`,
+   `presets/maestro-auditor.patch.yml`) actually require — bumping only the
    `dsh-maestro-review` pin is not sufficient.** Root-caused 2026-09-14:
    #102 (0.7.0) migrated the persona rows from a `text` field to
    `prefix`/`suffix`, which only `@deepseek-ai/dsh-persona` ≥ some 0.1.5-line
@@ -214,9 +214,11 @@ batch.
    failed closed** with `failed to create reviewer agent: ... invalid
    config: $.text missing required value` — silently, because step 5 below
    didn't exist yet and nobody re-validated end to end after finally
-   rebuilding the image. When a preset YAML's config shape changes, check
-   whether it needs a newer `dsh-agent-presets`/`dsh-persona` in
-   `profiles/reviewer-ci` too, in the same PR.
+   rebuilding the image. When a preset's config shape changes, check
+   whether it needs a newer registry/`dsh-persona` in
+   `profiles/reviewer-ci` too, in the same PR. (The presets themselves travel
+   inside the plugin bundle — `dsh.bundle.patch` lists the two patch files —
+   so the profile does not carry its own copy of them.)
 
    PR → CI green → `APPROVED` → merge.
 4. **Rebuild and push the Docker image — only after step 3 merges:**

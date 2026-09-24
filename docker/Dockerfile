@@ -45,18 +45,13 @@ RUN pnpm --dir profiles/reviewer-ci --config.minimumReleaseAge=0 install --froze
 # dsh now resolves from the profile's own node_modules/.bin, not a global install.
 ENV PATH="/app/profiles/reviewer-ci/node_modules/.bin:${PATH}"
 
-# Reviewer/auditor agent presets — orchestrator mounts preset ids
-# 'dsh-maestro-reviewer'/'dsh-maestro-auditor', and the legacy provider derives
-# the id from the directory name, so these must land under the user preset root
-# with their installed names. That directory is read ONLY by
-# @deepseek-ai/dsh-agent-presets (includeUserRoot defaults true); the 0.1.7-line
-# replacement @deepseek-ai/dsh-agent-preset-registry declares presets from
-# loader rows and never scans a directory (verified 2026-09-24), so the
-# provider row in profiles/reviewer-ci/cordis.patch.yml must stay the plural
-# package until these two presets are ported into `preset-<id>` rows — the
-# tripwire for that swap is tests/reviewer-ci-cordis-patch.test.ts.
-COPY presets/maestro-reviewer ./.agent-presets/dsh-maestro-reviewer
-COPY presets/maestro-auditor ./.agent-presets/dsh-maestro-auditor
+# Reviewer/auditor agent presets now arrive as bundle patch rows shipped by
+# @ddtcorex/dsh-maestro-review itself (presets/maestro-{reviewer,auditor}.patch.yml,
+# listed in its `dsh.bundle.patch`), which the profile composes like any other
+# bundle layer — the orchestrator mounts 'dsh-maestro-reviewer'/'dsh-maestro-auditor'
+# from the agent-preset registry. No .agent-presets COPY: DSH 0.1.7 declares
+# presets from loader rows only, and the plural @deepseek-ai/dsh-agent-presets
+# that used to scan that directory is no longer in this profile.
 # Host LLM-config mirror for model serving — dsh registers LLM adapters from
 # DSH_HOME settings, which is empty in a fresh container. Two variants
 # (selection in entrypoint.sh): ci-settings.deepseek.yaml (sole default,
