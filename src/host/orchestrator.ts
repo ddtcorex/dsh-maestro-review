@@ -39,6 +39,7 @@ import { reviewDigestText, type NotifierLike } from './notify.js'
 import { loadedReviewProfile, type ReviewSkillProfile } from './skills-tool.js'
 import type { ReviewProvider } from './providers/interface.js'
 import { gitlabProvider } from './providers/gitlab.js'
+import { REVIEW_SOURCE_KIND } from './source.js'
 import './events.js'
 import { gitlabAuthHeaders } from './gitlab-auth.js'
 import { reviewMarker, resolveFlow, type ReviewFlow } from './review-marker.js'
@@ -1167,7 +1168,7 @@ export function apply(ctx: Context, config: Config): void {
         if (incrementalBlock !== undefined) scopePrompt = `${incrementalBlock}\n\n${scopePrompt}`
         handle.agent.followup(createUserMessage({
           content: [{ type: 'text', text: scopePrompt }],
-          source: { kind: 'user' },
+          source: { kind: REVIEW_SOURCE_KIND },
         }))
         await whenIdleWithTimeout(handle, effectiveAgentTimeoutMs)
         assertTurnSucceededOrSalvage(handle, capturedFindings.length > 0, 'reviewer')
@@ -1266,7 +1267,7 @@ export function apply(ctx: Context, config: Config): void {
     ctx.sessionTitle.rename(handle.agent.session, `Maestro Auditor — MR !${payload.mrIid} (${payload.projectPath})`)
     try {
       const prompt = buildAuditorPrompt({ staticOnly: opts?.staticOnly === true })
-      handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: prompt }], source: { kind: 'user' } }))
+      handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: prompt }], source: { kind: REVIEW_SOURCE_KIND } }))
       await whenIdleWithTimeout(handle, effectiveAgentTimeoutMs)
       const output = auditorOutputFromSession(handle.agent.session)
       const text = output.map(block => ('text' in block ? block.text : '')).join('')
