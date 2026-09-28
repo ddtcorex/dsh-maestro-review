@@ -26,9 +26,12 @@ export function resolveSkillsDir(fromDir: string): string {
 
 /** Minimal frontmatter reader for our own SKILL.md — enough for the provider contract. */
 function parseFrontmatter(raw: string): { name: string; description: string; body: string } {
-  const m = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/)
+  // `\r?\n` on both delimiters and on the line split: a SKILL.md checked out
+  // with CRLF (git core.autocrlf, a Windows editor) otherwise parses to an
+  // empty description with no error at all.
+  const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/)
   if (!m) return { name: SKILL_NAME, description: '', body: raw }
-  const fm = m[1].split('\n').reduce<Record<string, string>>((acc, line) => {
+  const fm = m[1].split(/\r?\n/).reduce<Record<string, string>>((acc, line) => {
     const kv = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/)
     if (kv) acc[kv[1]] = kv[2].replace(/^["']|["']$/g, '')
     return acc

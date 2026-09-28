@@ -88,4 +88,18 @@ describe('skill-provider', () => {
     const def = await provider.get(candidate as never, {} as never)
     expect(def?.content).toContain('maestro_perf_log_stats')
   })
+
+  it('parses a CRLF SKILL.md exactly like the LF form', async () => {
+    const root = await fixture(VALID.replace(/\n/g, '\r\n'))
+    try {
+      const provider = makeSkillProvider(join(root, 'skills'))
+      const [candidate] = await provider.list({} as never)
+      expect(candidate).toMatchObject({ name: 'dsh-native-tools', description: 'test description' })
+      expect(candidate?.description).not.toContain('\r')
+      const def = await provider.get(candidate as never, {} as never)
+      expect(def?.content).toContain('# DSH Native Tools')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
 })
