@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.10.0] - 2026-09-29
+
+### Changed
+
+- **Retarget the suite to DSH `0.2.0-rc.2`.** The `@deepseek-ai/dsh-*` dev
+  pins move to the newest published runtime, so a green `verify` again means
+  something about the runtime the host actually boots instead of three
+  releases behind it (#139).
+- **The `dsh-client-connection` peer ceiling re-anchors to `<0.3.0-0`**
+  (#137). The old `<0.2.0-0` denied the whole `0.2` line — it fires on
+  `0.2.0-rc.1` and every later `0.2.x` — so the plugin was disabled at boot
+  on a runtime it supports. The floor and the `-0` suffix are unchanged: the
+  `-0` is load-bearing, since a plain `<0.3.0` would re-admit
+  `0.3.0-alpha.1`. This release exists so the `reviewer-ci` profile can move
+  onto the `0.2` line; the profile pin itself lands in the follow-up commit.
+- **The `dsh-maestro-meta` install path is gone from the docs** (#138).
+
+### Fixed
+
+- **CRLF skill frontmatter is parsed, and injected messages are attributed**
+  (#136). A skill file written on Windows produced an empty `description`,
+  which crippled skill selection in the reviewer; messages the plugin injects
+  into a session were attributed to the host rather than to the plugin.
+
 ## [0.9.0] - 2026-09-24
 
 ### Changed
