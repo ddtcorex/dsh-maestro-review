@@ -45,8 +45,6 @@ adapter in `src/config-store.ts`; machine runtime state stays in a package-local
 
 ```sh
 dsh plugin --profile web add @ddtcorex/dsh-maestro-review
-# or everything at once:
-dsh plugin --profile web add @ddtcorex/dsh-maestro-meta
 ```
 
 ## Development
