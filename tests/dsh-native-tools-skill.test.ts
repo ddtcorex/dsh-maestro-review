@@ -31,10 +31,13 @@ const HOST_SOURCES = [
   'module-check-tool.ts',
   'skills-tool.ts',
   'git-worktree-tool.ts',
-  'govard-audit-lint-tool.ts',
 ]
 
-/** Names in the map that the map claims this plugin owns. */
+/**
+ * Names in the map that the map claims THIS plugin owns. `govard_audit_lint`
+ * left this list with its fork: dsh-maestro-govard owns the tool now, and the
+ * skill map points at whichever plugin is installed rather than claiming it.
+ */
 const OWNED_BY_THIS_PLUGIN = [
   'maestro_perf_log_stats',
   'layout_xml_extract',
@@ -44,7 +47,6 @@ const OWNED_BY_THIS_PLUGIN = [
   'magento_module_check',
   'maestro_get_skills',
   'git_worktree',
-  'govard_audit_lint',
 ]
 
 describe('dsh-native-tools skill', () => {

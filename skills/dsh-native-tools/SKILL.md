@@ -47,7 +47,7 @@ Left column is the phrase the public skill uses; right column is what to call.
 | Public skill says | Tool and signature |
 |---|---|
 | native query-log stats tool | `maestro_perf_log_stats {topN?, repeatThreshold?, timeThresholdMs?}` → streaming and bounded; never hand-grep a 16–50k line log or open it as a spreadsheet |
-| native lint tool | `govard_audit_lint`; in the review plugin `{worktreePath?, scope?: "diff"\|"project", base?}` — the workflow quick/deep split; in the govard plugin `{worktreePath?, mode?, phpVersions?}` or `{checks:["integrity"]}` for container-free analysis. Do not hand-parse text or exit codes |
+| native lint tool | `govard_audit_lint {worktreePath?, scope?: "diff"\|"project", base?, checks?, timeout?}`, owned by the govard plugin and registered globally; `{checks:["integrity"]}` for container-free analysis. Inside a review, pass the worktree and the MR base explicitly — nothing wires them as defaults. Do not hand-parse text or exit codes |
 | native deploy preflight | `govard_deploy_plan {remote, build?, artifactDir?}` prints the pipeline without connecting; `govard_deploy_check {remote, build?, artifactDir?}` runs it. Both read-only, `remote` required. Running a deploy stays in the terminal |
 | native layout extraction | `layout_xml_extract {changedFiles:<MR layout files>}` → handles/blocks/moves + templateExists/parseError |
 | native theme inspection | `hyva_theme_inspect {classes:["<class-from-diff>"]}` → `{themes[],tailwind:{major,...},hyvaPackages[]}`; a null field means downgrade to a question |
