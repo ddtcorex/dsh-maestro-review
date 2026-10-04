@@ -4,19 +4,50 @@ import type { RpcErrorDetailsMap, RpcResult } from '@deepseek-ai/dsh-client-conn
 import { existsSync, statSync } from 'node:fs'
 import { loadUserConfig, saveUserConfig, type MaestroUserConfig } from './config-store.js'
 import { listReviews } from './review-history.js'
-import { pinRotationText, type NotifierLike } from './notify.js'
+import { type NotifierLike } from './notify.js'
 
 export const name = 'maestro-settings-rpc'
-export const inject = ['connection', 'maestroTunnel']
+/**
+ * `maestroTunnel` used to be a hard dependency here, which meant a review-only
+ * install could never activate this row: the service is provided by
+ * dsh-maestro-remote. The tunnel endpoints moved to their owner, so nothing
+ * here needs it any more.
+ */
+export const inject = ['connection']
 
-/** Keys the Settings card may persist; anything else is a rejected save. */
+/**
+ * Keys the Settings card may persist; anything else is a rejected save.
+ *
+ * This set is deliberately NARROWER than the store's `DOMAIN_KEY_MAP`. In
+ * particular `lanPort` and `lanHost` are absent and must stay absent: they are
+ * machine-local, and a harness sync rewrites `domains.tunnel` from the
+ * per-machine tunnel profile, so a Settings write for either key is discarded
+ * without a word. `tests/settings-rpc-savable-keys.test.ts` pins that.
+ */
 const SAVABLE_KEYS = new Set<keyof MaestroUserConfig>([
   'gitlabBaseUrl', 'gitlabToken', 'botUsername', 'webhookSecret', 'webhookPort',
-  'projectMappings', 'reviewModel', 'autoRereviewOnPush', 'autoReviewOnAssign', 'agentTimeoutMs', 'reviewSessionRetentionDays',
-  'tunnelMode', 'quickTarget', 'tunnelId', 'tunnelCredentialsFile', 'tunnelHostname',
-  'proxyPort', 'proxyHost', 'lanPinEnabled', 'pinSessionTtlHours', 'telegramBotToken', 'telegramChatId',
-  'telegramReviewNotifications',
+  'projectMappings', 'autoRereviewOnPush', 'autoReviewOnAssign',
+  'reviewModel', 'agentTimeoutMs', 'reviewSessionRetentionDays',
 ])
+
+/**
+ * Which plugin owns a key this one no longer serves, so a rejected save names
+ * the place the setting actually moved to instead of just "unknown key".
+ */
+const OWNER_OF: Record<string, string> = {
+  tunnelMode: 'dsh-maestro-remote',
+  quickTarget: 'dsh-maestro-remote',
+  tunnelId: 'dsh-maestro-remote',
+  tunnelCredentialsFile: 'dsh-maestro-remote',
+  tunnelHostname: 'dsh-maestro-remote',
+  proxyPort: 'dsh-maestro-remote',
+  proxyHost: 'dsh-maestro-remote',
+  lanPinEnabled: 'dsh-maestro-remote',
+  pinSessionTtlHours: 'dsh-maestro-remote',
+  telegramBotToken: 'dsh-maestro-notifier',
+  telegramChatId: 'dsh-maestro-notifier',
+  telegramReviewNotifications: 'dsh-maestro-notifier',
+}
 
 function validateReviewModel(value: unknown): string | null {
   if (value === null || value === undefined) return null
@@ -57,7 +88,8 @@ function validateSavePayload(payload: unknown): { ok: true; patch: Partial<Maest
   const patch: Partial<MaestroUserConfig> = {}
   for (const [key, value] of Object.entries(payload as Record<string, unknown>)) {
     if (!SAVABLE_KEYS.has(key as keyof MaestroUserConfig)) {
-      return { ok: false, message: `Unknown settings key "${key}".` }
+      const owner = OWNER_OF[key]
+      return { ok: false, message: `Unknown settings key "${key}"${owner ? ` (owned by ${owner})` : ''}.` }
     }
     if (key === 'projectMappings') {
       if (!Array.isArray(value)) return { ok: false, message: 'projectMappings must be an array.' }
@@ -108,21 +140,17 @@ function validateSavePayload(payload: unknown): { ok: true; patch: Partial<Maest
 }
 
 export const MAESTRO_RPC_CHANNEL = '/dsh-maestro-review'
+/**
+ * The three endpoints review still serves. The tunnel, proxy and PIN endpoints
+ * moved to dsh-maestro-remote, which already provides the `maestroTunnel`
+ * service this row used to depend on, and the telegram ones to
+ * dsh-maestro-notifier. Endpoint strings never changed; only the channel that
+ * carries them, so each owner keeps the same literal its clients already call.
+ */
 export const MAESTRO_ENDPOINTS = Object.freeze({
-  status: 'maestro.status',
   getConfig: 'maestro.getConfig',
   saveConfig: 'maestro.saveConfig',
-  tunnelStart: 'maestro.tunnelStart',
-  tunnelStop: 'maestro.tunnelStop',
-  proxyStatus: 'maestro.proxyStatus',
-  getPin: 'maestro.getPin',
-  rotatePin: 'maestro.rotatePin',
-  lanPinStatus: 'maestro.lanPin.status',
-  lanPinSetEnabled: 'maestro.lanPin.setEnabled',
-  lanPinRotate: 'maestro.lanPin.rotate',
   reviewsList: 'maestro.reviews.list',
-  modelsList: 'maestro.models.list',
-  modelsCurrent: 'maestro.models.current',
 })
 
 function ok<T>(value: T): RpcResult<T> {
@@ -149,9 +177,6 @@ function fail(message: string): RpcResult<never> {
 
 export function apply(ctx: Context): void {
   const handler = async (endpoint: string, payload: unknown) => {
-    if (endpoint === MAESTRO_ENDPOINTS.status) {
-      return ok(ctx.maestroTunnel.status())
-    }
     if (endpoint === MAESTRO_ENDPOINTS.getConfig) {
       return ok(maskSecrets(await loadUserConfig()))
     }
@@ -161,130 +186,8 @@ export function apply(ctx: Context): void {
       const merged = await saveUserConfig(validated.patch)
       return ok(maskSecrets(merged))
     }
-    if (endpoint === MAESTRO_ENDPOINTS.tunnelStart) {
-      return ok(await ctx.maestroTunnel.start())
-    }
-    if (endpoint === MAESTRO_ENDPOINTS.tunnelStop) {
-      return ok(await ctx.maestroTunnel.stop())
-    }
-    if (endpoint === MAESTRO_ENDPOINTS.proxyStatus) {
-      return ok(ctx.maestroTunnel.proxyStatus())
-    }
-    if (endpoint === MAESTRO_ENDPOINTS.getPin) {
-      return ok({ pin: await ctx.maestroTunnel.getPin() })
-    }
-    if (endpoint === MAESTRO_ENDPOINTS.rotatePin) {
-      const pin = await ctx.maestroTunnel.rotatePin()
-      // Delivery is deliberately detached: a slow/unavailable notifier cannot make the
-      // explicit security operation appear to fail or hold the Settings UI open.
-      void loadUserConfig().then((config) => {
-        const notifier = ctx.get?.('maestroNotifier') as NotifierLike | undefined
-        if (notifier === undefined) return undefined
-        return notifier.send(
-          'telegram',
-          { botToken: config.telegramBotToken, chatId: config.telegramChatId },
-          { text: pinRotationText(pin) },
-        )
-      }).then((delivery) => {
-        if (!delivery) return
-        if (delivery.sent) {
-          ctx.logger?.info?.('maestro-telegram: PIN rotation notification delivered')
-        } else if (delivery.reason === 'request-failed') {
-          ctx.logger?.warn?.('maestro-telegram: PIN rotation notification failed')
-        }
-      }).catch(() => {
-        ctx.logger?.warn?.('maestro-telegram: PIN rotation notification failed')
-      })
-      return ok({ pin })
-    }
-    if (endpoint === MAESTRO_ENDPOINTS.lanPinStatus) {
-      const config = await loadUserConfig()
-      // Disabled by default; the LAN PIN is only read (and generated) once the
-      // user opts in, so an untouched install keeps LAN access open.
-      if (config.lanPinEnabled !== true) return ok({ enabled: false })
-      return ok({ enabled: true, pin: await ctx.maestroTunnel.getLanPin() })
-    }
-    if (endpoint === MAESTRO_ENDPOINTS.lanPinSetEnabled) {
-      const enabled = (payload as { enabled?: unknown } | undefined)?.enabled === true
-      await saveUserConfig({ lanPinEnabled: enabled })
-      // The proxy reads lanPinEnabled at boot; a reload applies the new gate
-      // without waiting for a harness restart.
-      await ctx.maestroTunnel.reloadConfig()
-      // The gate lives in the proxy listener, not in the settings store, so a
-      // client cannot infer "live" from a successful write. Say so explicitly
-      // instead of letting the config card imply the gate is already in force.
-      return ok({ enabled, requiresRestart: true })
-    }
-    if (endpoint === MAESTRO_ENDPOINTS.lanPinRotate) {
-      return ok({ pin: await ctx.maestroTunnel.rotateLanPin() })
-    }
-    if (endpoint === MAESTRO_ENDPOINTS.reviewsList) {
+      if (endpoint === MAESTRO_ENDPOINTS.reviewsList) {
       return ok(await listReviews(20))
-    }
-    if (endpoint === MAESTRO_ENDPOINTS.modelsCurrent) {
-      const agentDefaultModel = ctx.get('agentDefaultModel') as { currentSelection(): { provider: string; model: string; reasoningEffort?: string } } | undefined
-      const fallback = agentDefaultModel?.currentSelection() ?? { provider: 'deepseek-official', model: 'deepseek-chat' }
-      return ok(fallback)
-    }
-    if (endpoint === MAESTRO_ENDPOINTS.modelsList) {
-      const agentDefaultModel = ctx.get('agentDefaultModel') as { currentSelection(): { provider: string; model: string; reasoningEffort?: string } } | undefined
-      const fallbackSelection = agentDefaultModel?.currentSelection() ?? { provider: 'deepseek-official', model: 'deepseek-chat' }
-      type LlmReasoningEffort = { id: string; name: string }
-      type LlmModelInfoWithReasoning = { id: string; name?: string; reasoning?: { efforts: LlmReasoningEffort[] } }
-      const llm = ctx.get('llm') as {
-        listProviders?: () => Array<{ id: string; name: string }>
-        listModels?: (provider: string) => Promise<readonly LlmModelInfoWithReasoning[]>
-        resolveModelInfo?: (provider: string, model: string) => Promise<LlmModelInfoWithReasoning & { reasoning?: { efforts: LlmReasoningEffort[] } }>
-      } | undefined
-      if (llm?.listProviders !== undefined && llm?.listModels !== undefined) {
-        try {
-          const providers = llm.listProviders()
-          const groups: Array<{ provider: string; name: string; models: Array<{ id: string; name?: string; supportsReasoning: boolean; reasoningEfforts: string[]; reasoning?: { efforts: LlmReasoningEffort[] } }> }> = []
-          for (const p of providers) {
-            try {
-              const models = await llm.listModels(p.id)
-              const enriched = await Promise.all(models.map(async (m) => {
-                let efforts: string[] = (m as LlmModelInfoWithReasoning).reasoning?.efforts?.map(e => e.id) ?? []
-                let reasoningObj = (m as LlmModelInfoWithReasoning).reasoning
-                if (efforts.length === 0 && typeof llm.resolveModelInfo === 'function') {
-                  try {
-                    const resolved = await llm.resolveModelInfo(p.id, m.id)
-                    if (resolved?.reasoning?.efforts) {
-                      reasoningObj = resolved.reasoning
-                      efforts = resolved.reasoning.efforts.map(e => e.id)
-                    }
-                  } catch {
-                    // ignore resolve failures, keep original
-                  }
-                }
-                const supportsReasoning = efforts.filter(e => e !== 'off').length > 0
-                return {
-                  id: m.id,
-                  name: m.name,
-                  supportsReasoning,
-                  reasoningEfforts: efforts,
-                  ...(reasoningObj ? { reasoning: reasoningObj } : {}),
-                }
-              }))
-              groups.push({ provider: p.id, name: p.name, models: enriched })
-            } catch {
-              groups.push({ provider: p.id, name: p.name, models: [] })
-            }
-          }
-          if (groups.length > 0) return ok({ groups, current: fallbackSelection })
-        } catch {
-          // fall through to fallback
-        }
-      }
-      // Fallback: single group containing the current selection so dropdown still works
-      return ok({
-        groups: [{
-          provider: fallbackSelection.provider,
-          name: fallbackSelection.provider,
-          models: [{ id: fallbackSelection.model, name: fallbackSelection.model, supportsReasoning: false, reasoningEfforts: [] }],
-        }],
-        current: fallbackSelection,
-      })
     }
     return fail(`Unknown endpoint: ${endpoint}`)
   }
