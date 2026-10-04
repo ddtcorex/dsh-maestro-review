@@ -5,7 +5,7 @@ allowBuilds:
 # entry shadows it (observed 2026-09-18) — the age gate stays off.
 minimumReleaseAge: 0
 packages:
-  - '../dsh-maestro-config-lib'
+  - .
 overrides:
   '@deepseek-ai/dsh-invariants': 0.1.7-rc.1
 minimumReleaseAgeExclude:
@@ -19,7 +19,6 @@ minimumReleaseAgeExclude:
   - '@deepseek-ai/dsh-session@0.1.6-alpha.2'
   - '@deepseek-ai/dsh-subagent@0.1.6-alpha.2'
   - '@deepseek-ai/dsh-tools@0.1.6-alpha.2'
-  - '@ddtcorex/dsh-maestro-config-lib@0.1.1'
   - '@deepseek-ai/cosmokit@1.8.3'
   - '@deepseek-ai/dsh-agent-default-model@0.1.2-rc.1'
   - '@deepseek-ai/dsh-agent-presets@0.1.2-rc.1'
