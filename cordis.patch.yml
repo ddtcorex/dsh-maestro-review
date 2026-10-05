@@ -1,6 +1,6 @@
-# dsh-maestro-review bundle patch — 4 rows as spec §4
-# RPC channel: /dsh-maestro-review (loopback, see src/index.ts + src/settings-rpc.ts)
-# channel: /dsh-maestro-review
+# dsh-maestro-review bundle patch: 4 rows, maestro-review-host, maestro-review-webhook,
+# maestro-review-orchestrator, maestro-review-settings-rpc
+# RPC channel: /dsh-maestro-review (see src/host/settings-rpc.ts)
 - insert:
     # Mounts the package root (lib/index.js -> apply()). Required: `dsh plugin add`
     # applies ONLY the rows in this file, so without it the skill-provider

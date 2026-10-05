@@ -122,7 +122,7 @@ Two ways to trigger:
 
 ### Case C — Quick review via webhook mention (mapped projects)
 
-On a live DSH host with the project mapped (Settings → Maestro): comment
+On a live DSH host with the project mapped (Settings -> Maestro Review): comment
 `@<bot-username>` on the MR. Routes `trigger=mention, mode=quick`.
 Unmapped projects get the diff-only fallback comment instead.
 
@@ -141,7 +141,7 @@ it skips the decline and clones instead). The decline is recorded as
 - **CI**: set `REVIEW_ON_PUSH: "1"` (bridge variable or manual run).
   Unset = only the first review runs; new pushes are skipped. Same-SHA
   reruns always skip regardless.
-- **Webhook**: Settings → Maestro → `autoRereviewOnPush` (same semantics),
+- **Webhook**: Settings -> Maestro Review -> `autoRereviewOnPush` (same semantics),
   plus the webhook push-gate: a push only re-reviews an MR that already has a
   completed review in host history (otherwise every newly opened MR would be
   reviewed twice). Review-on-assign defaults **on**; re-review-on-push
