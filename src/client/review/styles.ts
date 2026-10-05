@@ -42,6 +42,11 @@ export const REVIEW_CSS = `
 [data-review-row]:last-of-type { border-bottom: none; }
 [data-review-row-text] { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding-right: 48px; }
 [data-review-control] { flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-height: 36px; }
+/* Declared once. These two rules previously existed twice — the 12px/600 pair
+   sat AFTER the house values and won on source order at equal specificity, so
+   the whole tab rendered at the old weight and the old hint size. */
+[data-review-label] { font-size: 14px; font-weight: 400; line-height: 22px; color: var(--dsw-alias-label-primary); }
+[data-review-hint] { margin: 0; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
 
 /* A secret whose value is committed by a button: input and save travel
    together, the save under the input it writes. */
@@ -53,16 +58,23 @@ export const REVIEW_CSS = `
 }
 [data-review-secret-group] button:disabled { opacity: 0.55; cursor: default; }
 [data-review-secret-group] button:focus-visible { outline: 2px solid var(--dsw-alias-border-l2); outline-offset: 2px; }
-[data-review-label] { font-size: 12px; font-weight: 600; }
-[data-review-hint] { margin: 0; font-size: 11px; line-height: 15px; color: var(--dsw-alias-label-secondary); }
 
-[data-review-control] input[type="text"], [data-review-control] select {
+/* Every row control gets the same box. The password type belongs in this list:
+   without it the two secret fields rendered at the UA default — 21px tall, no
+   radius — beside 32px fields with an 8px radius in the same column. */
+[data-review-control] input[type="text"], [data-review-control] input[type="password"], [data-review-control] select {
   min-height: 32px; padding: 0 10px; border-radius: 8px;
   border: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-1);
   color: inherit; font: inherit;
 }
 [data-review-control] input:focus-visible, [data-review-control] select:focus-visible {
   outline: 2px solid var(--dsw-alias-border-l2); outline-offset: 2px;
+}
+/* The checkbox is the one control the harness draws at its own size; without
+   this it rendered at the UA's 13px. Same values as the reference row. */
+[data-review-control] input[type="checkbox"] {
+  width: 16px; height: 16px; margin: 0; flex: none;
+  accent-color: var(--dsw-alias-brand-primary, #0A84FF);
 }
 
 [data-review-pin], [data-review-lan] { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
