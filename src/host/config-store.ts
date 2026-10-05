@@ -70,6 +70,23 @@ function resolveDshHome(dshHome?: string): string {
 }
 
 /**
+ * The keys review reads and may persist: its own gitlab + review settings, plus
+ * the one machine-runtime flag that belongs to its own sidecar.
+ *
+ * Deliberately the READ counterpart of `SAVABLE_KEYS` in `settings-rpc.ts`, plus
+ * `lastTunnelRunning` — which review reads from its sidecar and never writes to
+ * the shared store. Keep both in step: a key here that is not savable is a read
+ * review needs but cannot change, and a savable key missing here is one the UI
+ * could write but never read back.
+ */
+const REVIEW_OWNED_KEYS = [
+  'gitlabBaseUrl', 'gitlabToken', 'botUsername', 'webhookSecret', 'webhookPort',
+  'projectMappings', 'autoRereviewOnPush', 'autoReviewOnAssign',
+  'reviewModel', 'agentTimeoutMs', 'reviewSessionRetentionDays',
+  'lastTunnelRunning',
+] as const satisfies readonly (keyof MaestroUserConfig)[]
+
+/**
  * Settings live in the SHARED namespaced store (`~/.dsh/dsh-maestro-config/settings.json`,
  * owned by dsh-maestro-core and embedded here at `src/host/vendor/store.ts`); this store is a thin adapter that
  * keeps the package's flat `MaestroUserConfig` API while delegating persistence.
@@ -108,7 +125,29 @@ export async function loadUserConfig(dshHome?: string): Promise<MaestroUserConfi
     readFlat({ dshHome }),
     readRuntimeState(dshHome),
   ])
-  return { ...flat, ...runtime } as MaestroUserConfig
+  // Scope the read to the keys review OWNS. `readFlat` returns the WHOLE store
+  // view — every `DOMAIN_KEY_MAP` key across every domain — so returning it
+  // unfiltered made review's own settings RPC (`/dsh-maestro-review`,
+  // `maestro.getConfig`) answer with remote's tunnel identity: `tunnelHostname`,
+  // `tunnelId`, `tunnelCredentialsFile` (the local path of the machine's
+  // Cloudflare credentials file), `lanPort`, `lanPinEnabled`, `proxyPort`,
+  // `pinSessionTtlHours` — plus the notifier's telegram token and chat id.
+  //
+  // The leak was one-directional and therefore invisible: `SAVABLE_KEYS` already
+  // rejected every one of those keys on a WRITE (with `OWNER_OF` naming the
+  // owning plugin), and nothing in review reads them — but the read side handed
+  // them to the client anyway.
+  //
+  // An ALLOWLIST, not a denylist, so a key added to the shared store later
+  // cannot leak by default. `tests/config-scope.spec.ts` pins the set.
+  const scoped: Record<string, unknown> = {}
+  for (const key of REVIEW_OWNED_KEYS) {
+    const value = flat[key as string]
+    if (value !== undefined) scoped[key as string] = value
+    const local = runtime[key as string]
+    if (local !== undefined) scoped[key as string] = local
+  }
+  return scoped as MaestroUserConfig
 }
 
 export async function saveUserConfig(patch: MaestroUserConfig, dshHome?: string): Promise<MaestroUserConfig> {
