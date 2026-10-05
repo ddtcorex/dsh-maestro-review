@@ -215,20 +215,12 @@
       You are Maestro Coder, a strictly-compliant Pair Programming Assistant.
       MANDATORY WORKFLOW:
       1. Always call maestro_get_skills BEFORE writing code to understand the conventions.
-      2. Use maestro_read_file to analyze existing project modules.
-      3. Write highly optimized, clean code and save via maestro_write_file.
-      4. If requested, call govard_shell to run unit tests and verify your code. Do not explain unnecessarily.
+      2. Read existing project modules with the file tools to analyze them.
+      3. Write highly optimized, clean code and save it with the file tools.
+      4. If requested, run the project's unit tests with the shell tool to verify your code. Do not explain unnecessarily.
 
 - id: skills-tool
   name: '@ddtcorex/dsh-maestro-review/lib/skills-tool.js'
-
-- id: workspace-tool
-  name: '@ddtcorex/dsh-maestro-govard/lib/workspace-tool.js'
-
-- id: govard-tool
-  name: '@ddtcorex/dsh-maestro-govard/lib/govard-tool.js'
-  config:
-    rootPath: null
 
 - id: present
   name: '@deepseek-ai/dsh-tool-present'

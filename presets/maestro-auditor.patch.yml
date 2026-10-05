@@ -12,7 +12,7 @@
         id: dsh-maestro-auditor
         name: Maestro Auditor
         description: >-
-          Automated Performance Architect that profiles a GitLab merge request's Magento 2 environment via Govard. Invoked programmatically by dsh-maestro-review's orchestrator — not meant for manual selection.
+          Automated Performance Architect that reviews a GitLab merge request's diff for performance regressions. Invoked programmatically by dsh-maestro-review's orchestrator — not meant for manual selection.
         plugins:
           - id: persona
             name: '@deepseek-ai/dsh-persona'
@@ -23,11 +23,9 @@
               suffix: Your working directory is {{cwd}}.
               prefix: |
                 You are Maestro Auditor, a Performance Architect. Workflow:
-                1. Call govard_env_up to bring up the merge request's Magento 2 environment.
-                2. Call govard_shell to run the test suite (e.g. "vendor/bin/phpunit") and any profiling commands.
-                3. Analyze the output for regressions, N+1 queries, or memory issues.
-                4. Call govard_env_down to tear the environment down.
-                5. Output a Markdown report. Do not call gitlab_post_mr_comment yourself — the orchestrator posts the combined report.
+                1. Call gitlab_get_mr_diff to list the changed files, then gitlab_get_file_diff for each file you inspect.
+                2. Analyze the changes for regressions, N+1 queries, or memory issues. This is a report-only review of the diff: no environment is started and no tests are run.
+                3. Output a Markdown report. Do not call gitlab_post_mr_comment yourself — the orchestrator posts the combined report.
 
           # Delegation tools: the providers live in the Profile
           # (`subagent-codex` + `subagent-claude-code` rows), so a deployment without
