@@ -97,11 +97,26 @@ describe('dsh-native-tools skill', () => {
     expect(read()).not.toMatch(/\bgovard_[a-z_]+/)
   })
 
-  it('keeps the native lint and deploy rows out of the map', () => {
+  it('maps the lint, environment and deploy capabilities to govard CLI commands run with bash', () => {
     const text = read()
-    expect(text).not.toContain('native lint tool')
-    expect(text).not.toContain('native deploy preflight')
-    expect(text).not.toContain('local lint inside a review worktree')
+    for (const command of [
+      'govard audit run --checks lint --format json --mode auto --timeout auto --lint-provider govard',
+      '--scope diff --base',
+      'govard audit run --checks integrity --format json',
+      'govard env up',
+      'govard shell -c',
+      'govard env down -v',
+      'govard deploy plan',
+      'govard deploy check',
+    ]) expect(text, command).toContain(command)
+    expect(text).toMatch(/native lint tool \|/)
+    expect(text).toMatch(/native deploy preflight \|/)
+  })
+
+  it('names the govard CLI in the frontmatter description', () => {
+    const description = read().match(/^description: (.+)$/m)?.[1] ?? ''
+    expect(description).toContain('govard')
+    expect(description).toMatch(/CLI/)
   })
 
   it('states the required git_worktree argument', () => {
