@@ -2,10 +2,13 @@ import { describe, it, expect } from 'vitest'
 import { buildAuditorPrompt } from '../src/host/orchestrator.js'
 
 describe('buildAuditorPrompt', () => {
-  it('full prompt keeps the environment + test-suite workflow (mapped flow)', () => {
+  it('full prompt is a report-only diff review with no environment or test-suite steps (mapped flow)', () => {
     const prompt = buildAuditorPrompt({ staticOnly: false })
-    expect(prompt).toMatch(/bring up the environment/)
-    expect(prompt).toMatch(/run the test suite/)
+    expect(prompt).not.toMatch(/bring up/i)
+    expect(prompt).not.toMatch(/tear/i)
+    expect(prompt).not.toMatch(/run the test suite/i)
+    expect(prompt).toMatch(/diff/i)
+    expect(prompt).toMatch(/Markdown report/)
   })
 
   it('static prompt drops env/test-suite and tells the auditor to omit that section (CI flow)', () => {

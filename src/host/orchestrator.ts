@@ -706,7 +706,7 @@ export function shouldCiQuickProfileReview(payload: ReviewRequest): boolean {
     && process.env.MR_IID !== undefined
 }
 
-/** Auditor degrade for CI (no runtime env): a govard throw becomes reviewer-only, never a failed review. */
+/** Auditor degrade for CI (no runtime env): an auditor throw becomes reviewer-only, never a failed review. */
 export function withAuditorDegrade(
   runAuditor: (worktreePath: string, payload: ReviewRequest) => Promise<string>,
 ): (worktreePath: string, payload: ReviewRequest) => Promise<string> {
@@ -720,14 +720,14 @@ export function withAuditorDegrade(
 }
 
 /**
- * Auditor instruction. The mapped flow keeps the full environment + test-suite
- * workflow; the CI flow has no runtime, so the prompt countermands the
- * auditor preset's environment steps and drops the Environment & Test Suite
- * section entirely instead of reporting it "blocked".
+ * Auditor instruction. Both flows are report-only diff reviews since no tool
+ * can start an environment; the CI flow additionally has no checked-out runtime
+ * and drops the Environment & Test Suite section entirely instead of reporting
+ * it "blocked".
  */
 export function buildAuditorPrompt(opts: { staticOnly: boolean }): string {
   if (!opts.staticOnly) {
-    return 'Audit this merge request\'s performance: bring up the environment, run the test suite, look for regressions, then write a Markdown report and tear the environment down.'
+    return 'Audit this merge request\'s performance by reviewing its diff: look for regressions, N+1 queries and memory issues, then write a Markdown report. This is a report-only review: no environment is started and no tests are run.'
   }
   return 'Audit this merge request\'s performance from the static diff and checked-out code only. '
     + 'No runtime environment exists in this container: ignore the auditor preset\'s environment steps '
