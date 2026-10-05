@@ -11,7 +11,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SETTINGS_NAV_MARKER = void 0;
 exports.registerSettingsNavIcon = registerSettingsNavIcon;
-exports.SETTINGS_NAV_MARKER = 'data-maestro-gateway-settings-nav';
+exports.SETTINGS_NAV_MARKER = 'data-maestro-review-settings-nav';
 function registerSettingsNavIcon(label, root) {
     if (typeof document === 'undefined' && root === undefined) {
         // Node-side import safety (tests inject a stub root instead).
@@ -31,7 +31,7 @@ function registerSettingsNavIcon(label, root) {
                 button.textContent.trim() === currentLabel;
             if (matches)
                 el.setAttribute(exports.SETTINGS_NAV_MARKER, '');
-            else
+            else if (el.hasAttribute(exports.SETTINGS_NAV_MARKER))
                 el.removeAttribute(exports.SETTINGS_NAV_MARKER);
         }
     };

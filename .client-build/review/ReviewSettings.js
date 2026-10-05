@@ -42,14 +42,40 @@ exports.ReviewSettings = ReviewSettings;
  * field keeps what is stored, and a filled field replaces it.
  */
 const React = __importStar(require("react"));
+const BrandMark_js_1 = require("../BrandMark.js");
+/**
+ * What each setting is called on screen.
+ *
+ * The page used to label every field with `String(key)`, so it read
+ * "gitlabBaseUrl" and "reviewSessionRetentionDays" to anyone who had not
+ * opened the store. The key stays as the `data-review-input` value and the
+ * wire name; only the visible label changes.
+ */
+const FIELD_LABELS = {
+    gitlabBaseUrl: 'GitLab base URL',
+    botUsername: 'Bot username',
+    webhookPort: 'Webhook port',
+    autoRereviewOnPush: 'Re-review on push',
+    autoReviewOnAssign: 'Review on assign',
+    agentTimeoutMs: 'Agent timeout (ms)',
+    reviewSessionRetentionDays: 'Session retention (days)',
+};
+/**
+ * One setting, in the house pattern's two-column row: label and hint left,
+ * control held right. `htmlFor`/`id` are what give the control its accessible
+ * name — the previous markup rendered a bare `<label>` beside an input with no
+ * `id`, so nothing was associated.
+ */
 function Field(props) {
-    return React.createElement('div', { 'data-review-field': '' }, React.createElement('label', { 'data-review-label': '' }, props.label), props.children, props.hint ? React.createElement('p', { 'data-review-hint': '' }, props.hint) : null);
+    return React.createElement('div', { 'data-review-row': '' }, React.createElement('div', { 'data-review-row-text': '' }, React.createElement('label', { 'data-review-label': '', htmlFor: props.id }, props.label), props.hint ? React.createElement('p', { 'data-review-hint': '' }, props.hint) : null), React.createElement('div', { 'data-review-control': '' }, props.children));
 }
 function SecretField(props) {
     return Field({
+        id: props.id,
         label: props.label,
         hint: props.present ? 'A value is stored. Leave blank to keep it.' : 'Not set.',
-        children: React.createElement('input', {
+        children: React.createElement('div', { 'data-review-secret-group': '' }, React.createElement('input', {
+            id: props.id,
             type: 'password',
             value: props.value,
             placeholder: props.present ? 'stored — type to replace' : 'not set',
@@ -57,7 +83,15 @@ function SecretField(props) {
             autoComplete: 'new-password',
             'data-review-secret': '',
             onChange: (e) => props.onChange(e.target.value),
-        }),
+        }), 
+        // The save belongs to this field: it stays disabled until the field
+        // holds something, and floating it below the row left it orphaned.
+        React.createElement('button', {
+            type: 'button',
+            disabled: props.disabled || props.value === '',
+            'data-review-save-secret': props.name,
+            onClick: props.onSave,
+        }, 'Save')),
     });
 }
 function ReviewSettings(props) {
@@ -106,8 +140,10 @@ function ReviewSettings(props) {
         }
     }, [rpcCall, refresh, fail]);
     const text = (key, placeholder = '') => Field({
-        label: String(key),
+        id: `review-${String(key)}`,
+        label: FIELD_LABELS[key] ?? String(key),
         children: React.createElement('input', {
+            id: `review-${String(key)}`,
             type: 'text',
             value: cfg[key] ?? '',
             placeholder,
@@ -117,41 +153,41 @@ function ReviewSettings(props) {
             onBlur: (e) => void save({ [key]: e.target.value }),
         }),
     });
-    const toggle = (key, title) => Field({
-        label: title,
+    const toggle = (key) => Field({
+        id: `review-${String(key)}`,
+        label: FIELD_LABELS[key] ?? String(key),
         children: React.createElement('input', {
+            id: `review-${String(key)}`,
             type: 'checkbox',
             checked: cfg[key] === true,
             disabled: busy,
-            'aria-label': title,
             'data-review-toggle': String(key),
             onChange: (e) => void save({ [key]: e.target.checked }),
         }),
     });
-    return React.createElement('div', { 'data-review-root': '' }, React.createElement('h2', { 'data-review-title': '' }, 'GitLab and Review'), notice
+    return React.createElement('div', { 'data-review-root': '' }, 
+    // House header: badge, title, one-line status. The notice lives here so it
+    // reports without pushing the rows down.
+    React.createElement('div', { 'data-review-header': '' }, React.createElement(BrandMark_js_1.BrandBadge, { style: { alignSelf: 'flex-start', marginTop: 2 } }), React.createElement('div', { 'data-review-heading': '' }, React.createElement('h2', { 'data-review-title': '' }, 'GitLab and Review'), React.createElement('div', { 'data-review-status': '' }, notice
         ? React.createElement('p', { 'data-review-notice': '', 'data-tone': notice.tone, role: 'status' }, notice.text)
-        : null, React.createElement('div', { 'data-review-actions': '' }, React.createElement('button', { type: 'button', disabled: busy, onClick: () => void refresh() }, 'Refresh')), text('gitlabBaseUrl', 'https://gitlab.example.com'), text('botUsername', 'maestro-bot'), SecretField({
+        : React.createElement('span', null, 'GitLab credentials and review triggers.')))), React.createElement('div', { 'data-review-actions': '' }, React.createElement('button', { type: 'button', disabled: busy, onClick: () => void refresh() }, 'Refresh')), text('gitlabBaseUrl', 'https://gitlab.example.com'), text('botUsername', 'maestro-bot'), SecretField({
+        id: 'review-gitlab-token',
+        name: 'gitlabToken',
         label: 'GitLab token',
         present: cfg.hasGitlabToken === true,
         value: gitlabToken,
         disabled: busy,
         onChange: setGitlabToken,
-    }), React.createElement('button', {
-        type: 'button',
-        disabled: busy || gitlabToken === '',
-        'data-review-save-secret': 'gitlabToken',
-        onClick: () => void save({ gitlabToken }),
-    }, 'Save token'), SecretField({
+        onSave: () => void save({ gitlabToken }),
+    }), SecretField({
+        id: 'review-webhook-secret',
+        name: 'webhookSecret',
         label: 'Webhook secret',
         present: cfg.hasWebhookSecret === true,
         value: webhookSecret,
         disabled: busy,
         onChange: setWebhookSecret,
-    }), React.createElement('button', {
-        type: 'button',
-        disabled: busy || webhookSecret === '',
-        'data-review-save-secret': 'webhookSecret',
-        onClick: () => void save({ webhookSecret }),
-    }, 'Save secret'), text('webhookPort', '3081'), toggle('autoRereviewOnPush', 'Re-review on push'), toggle('autoReviewOnAssign', 'Review on assign'), text('agentTimeoutMs', '600000'), text('reviewSessionRetentionDays', '30'));
+        onSave: () => void save({ webhookSecret }),
+    }), text('webhookPort', '3081'), toggle('autoRereviewOnPush'), toggle('autoReviewOnAssign'), text('agentTimeoutMs', '600000'), text('reviewSessionRetentionDays', '30'));
 }
 //# sourceMappingURL=ReviewSettings.js.map
