@@ -34,9 +34,9 @@ const HOST_SOURCES = [
 ]
 
 /**
- * Names in the map that the map claims THIS plugin owns. `govard_audit_lint`
- * left this list with its fork: dsh-maestro-govard owns the tool now, and the
- * skill map points at whichever plugin is installed rather than claiming it.
+ * Names in the map that the map claims THIS plugin owns. The govard plugin
+ * (`govard_*` tools) is not part of this harness, so none of its tools may
+ * appear in the map: see the guard test below.
  */
 const OWNED_BY_THIS_PLUGIN = [
   'maestro_perf_log_stats',
@@ -90,10 +90,18 @@ describe('dsh-native-tools skill', () => {
     expect(registered.has('magento_module_check')).toBe(true)
   })
 
-  it('names the tools the sibling govard plugin owns', () => {
+  it('names no tool of the retired govard plugin', () => {
+    // A map row for a tool that no longer ships sends the model after a call the
+    // registry rejects. If a govard tool ever returns, it must be added to
+    // OWNED_BY_THIS_PLUGIN or to a deliberately maintained list, not here.
+    expect(read()).not.toMatch(/\bgovard_[a-z_]+/)
+  })
+
+  it('keeps the native lint and deploy rows out of the map', () => {
     const text = read()
-    for (const tool of ['govard_audit_lint', 'govard_deploy_plan', 'govard_deploy_check'])
-      expect(text, tool).toContain(tool)
+    expect(text).not.toContain('native lint tool')
+    expect(text).not.toContain('native deploy preflight')
+    expect(text).not.toContain('local lint inside a review worktree')
   })
 
   it('states the required git_worktree argument', () => {
