@@ -103,22 +103,22 @@ export interface ReviewerScopePromptOpts {
   mode?: string
   profileInstruction: string
   /**
-   * The lint call to demand, or null when the owning plugin's tool is not
-   * visible to this agent. `dsh-maestro-govard` registers `govard_audit_lint`
-   * in the host tool layer, which every agent scope inherits, so review no
-   * longer mounts it and the MR base sha it used to pass as `defaultBase` has
-   * to travel in the prompt instead.
+   * The govard CLI lint run to demand, or null when the bash tool or the
+   * `govard` binary is not available to this agent. The command carries the
+   * worktree and the MR base sha because nothing wires them as defaults.
    */
   lint: { worktreePath: string; base: string } | null
 }
 
 /**
- * Reviewer scope prompt. Static analysis is mandatory: reviewers skipped
- * govard_audit_lint for whole rounds (no lint signal at all), so the prompt
- * requires at least one call before report_review_findings. Pure for testing.
+ * Reviewer scope prompt. Static analysis is mandatory: reviewers skipped the
+ * lint for whole rounds (no lint signal at all), so the prompt requires at
+ * least one govard CLI lint run through the bash tool before
+ * report_review_findings. A run that cannot execute is reported, never fatal.
+ * Pure for testing.
  */
 export function buildReviewerScopePrompt(opts: ReviewerScopePromptOpts): string {
-  const lintRule = opts.lint === null ? '' : ` LINT RULE: you MUST call govard_audit_lint at least once before report_review_findings, passing worktreePath "${opts.lint.worktreePath}" and base "${opts.lint.base}". A review with no lint call is incomplete.`
+  const lintRule = opts.lint === null ? '' : ` LINT RULE: you MUST run the govard lint with the bash tool at least once before report_review_findings, with workdir "${opts.lint.worktreePath}": govard audit run --checks lint --format json --mode auto --timeout auto --lint-provider govard --scope diff --base "${opts.lint.base}". Exit 0 means clean and 1 means findings in the JSON output. A run that cannot execute (govard missing, no Docker, a timeout, an unsupported framework) is not a finding and must not stop the review: say that lint was unavailable and continue. A review that never attempts the lint run is incomplete.`
   if (opts.scopeKind === 'discussion') {
     return `${opts.profileInstruction}Review only the requested inline discussion ${opts.discussionId} at ${opts.path}:${opts.line}. Do not review unrelated files or start a broad audit. Call gitlab_get_mr_diff, then gitlab_get_file_diff for the file under review, then call report_review_findings exactly once when done. ${lintRule}`
   }
@@ -926,7 +926,7 @@ export function govardWorktreeOverride(projectId: number, mrIid: number, keySuff
 
 /**
  * Fetch the MR's diff base SHA for govard diff-scope runs. Best-effort:
- * returns undefined (the lint tool then fail-fasts with guidance) rather
+ * returns undefined (the reviewer prompt then omits the lint rule) rather
  * than failing the review when GitLab is unreachable.
  */
 export async function fetchMrBaseSha(
@@ -1119,8 +1119,8 @@ export function apply(ctx: Context, config: Config): void {
   // effect without a plugin restart.
   let effectiveAgentTimeoutMs = config.agentTimeoutMs
   async function runReviewer(worktreePath: string | undefined, payload: ReviewRequest, effective: { gitlabBaseUrl: string; gitlabToken: string; botUsername: string }, reviewProfile?: ReviewSkillProfile, modelSelection?: ModelSelection, incrementalBlock?: string): Promise<ReviewOutcome> {
-    // MR base SHA feeds govard diff-scope runs; undefined degrades to the
-    // tool's fail-fast guidance instead of a wasted govard invocation.
+    // MR base SHA feeds the govard diff-scope lint command; undefined omits the
+    // lint rule instead of sending a wasted govard invocation.
     const lintDefaultBase = await fetchMrBaseSha(effective.gitlabBaseUrl, effective.gitlabToken, payload.projectId, payload.mrIid)
     const primaryOptions = agentOptionsForModel(modelSelection ?? ctx.agentDefaultModel.currentSelection())
     const fallbackOptions: ModelSelection = { provider: primaryOptions.provider, model: primaryOptions.model }
@@ -1168,10 +1168,9 @@ export function apply(ctx: Context, config: Config): void {
         const profileInstruction = reviewProfile === undefined
           ? 'This is a diff-only review with no local checkout or Magento environment. Do not claim that tests, static analysis, or Magento runtime validation ran. '
           : `Call maestro_load_review_profile with {"profile":"${reviewProfile}"} before examining code. `
-        // The owning plugin registers govard_audit_lint globally, so the
-        // reviewer may already be able to call it. Only demand the call when
-        // the registry resolves it for this agent, and carry the MR base sha
-        // in the prompt because nothing wires it as a tool default any more.
+        // The lint runs as a govard CLI command through the bash tool. Only
+        // demand it when the registry resolves bash for this agent and govard
+        // is on PATH, and carry the MR base sha in the command.
         const lint = worktreePath !== undefined && lintDefaultBase && detectGovardLint(ctx, handle.agent)
           ? { worktreePath, base: lintDefaultBase }
           : null
