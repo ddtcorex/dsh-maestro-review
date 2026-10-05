@@ -8,7 +8,7 @@
  * mounts. The marker owns no shell structure and is removed on disposal.
  */
 
-export const SETTINGS_NAV_MARKER = 'data-maestro-gateway-settings-nav';
+export const SETTINGS_NAV_MARKER = 'data-maestro-review-settings-nav';
 
 /** Minimal DOM surface used here; tests inject a stub instead of `document`. */
 type NodeSeq = Iterable<Element> & { forEach(fn: (el: Element) => void): unknown };
@@ -20,6 +20,7 @@ interface DomScope {
 type ElementLike = Element & {
   setAttribute(name: string, value: string): void
   removeAttribute(name: string): void
+  hasAttribute(name: string): boolean
 };
 
 export function registerSettingsNavIcon(
@@ -45,7 +46,7 @@ export function registerSettingsNavIcon(
         button.textContent != null &&
         button.textContent.trim() === currentLabel;
       if (matches) el.setAttribute(SETTINGS_NAV_MARKER, '');
-      else el.removeAttribute(SETTINGS_NAV_MARKER);
+      else if (el.hasAttribute(SETTINGS_NAV_MARKER)) el.removeAttribute(SETTINGS_NAV_MARKER);
     }
   };
 
