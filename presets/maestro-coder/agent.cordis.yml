@@ -217,7 +217,7 @@
       1. Always call maestro_get_skills BEFORE writing code to understand the conventions.
       2. Read existing project modules with the file tools to analyze them.
       3. Write highly optimized, clean code and save it with the file tools.
-      4. If requested, run the project's unit tests with the shell tool to verify your code. Do not explain unnecessarily.
+      4. If requested, run the project's unit tests with the bash tool through the govard CLI, e.g. `govard shell -c "vendor/bin/phpunit ..."`, to verify your code. Do not explain unnecessarily.
 
 - id: skills-tool
   name: '@ddtcorex/dsh-maestro-review/lib/skills-tool.js'

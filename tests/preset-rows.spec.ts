@@ -141,14 +141,31 @@ describe.each(PRESET_DIRS)('%s has no govard plugin coupling', (dir) => {
   })
 })
 
-describe('maestro-auditor persona is a report-only diff review', () => {
+describe('maestro-auditor persona drives the environment through the govard CLI', () => {
   const block = rowBlock(read('maestro-auditor'), 'persona')
 
-  it('reads the merge request diff through the GitLab tools', () => {
-    expect(block).toMatch(/gitlab_get_mr_diff|gitlab_get_file_diff/)
+  it('brings the environment up, runs tests in it and tears it down with CLI commands', () => {
+    expect(block).toMatch(/bash tool/)
+    expect(block).toContain('govard env up')
+    expect(block).toContain('govard shell -c')
+    expect(block).toContain('govard env down -v')
+  })
+
+  it('falls back to a report-only diff review when the CLI is unavailable', () => {
+    expect(block).toMatch(/gitlab_get_mr_diff/)
+    expect(block).toMatch(/report-only/)
+    expect(block).toMatch(/no tests were run/)
   })
 
   it('still leaves posting the combined report to the orchestrator', () => {
     expect(block).toMatch(/Do not call gitlab_post_mr_comment yourself/)
+  })
+})
+
+describe('maestro-coder persona runs unit tests through the govard CLI', () => {
+  const yml = read('maestro-coder')
+  it('names the in-environment shell command, not a retired tool', () => {
+    expect(yml).toContain('govard shell -c')
+    expect(yml).toMatch(/bash tool/)
   })
 })

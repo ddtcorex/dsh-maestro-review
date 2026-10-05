@@ -720,14 +720,21 @@ export function withAuditorDegrade(
 }
 
 /**
- * Auditor instruction. Both flows are report-only diff reviews since no tool
- * can start an environment; the CI flow additionally has no checked-out runtime
- * and drops the Environment & Test Suite section entirely instead of reporting
- * it "blocked".
+ * Auditor instruction. The mapped flow drives the environment through govard
+ * CLI commands in the bash tool (`govard env up`, `govard shell -c`,
+ * `govard env down -v`) and degrades to a report-only diff review when the CLI
+ * cannot run (`cliAvailable: false`, or a failure the model reports). The CI
+ * flow has no runtime at all and drops the Environment & Test Suite section
+ * entirely instead of reporting it "blocked".
  */
-export function buildAuditorPrompt(opts: { staticOnly: boolean }): string {
+export function buildAuditorPrompt(opts: { staticOnly: boolean; cliAvailable?: boolean }): string {
   if (!opts.staticOnly) {
-    return 'Audit this merge request\'s performance by reviewing its diff: look for regressions, N+1 queries and memory issues, then write a Markdown report. This is a report-only review: no environment is started and no tests are run.'
+    if (opts.cliAvailable === false) {
+      return 'Audit this merge request\'s performance by reviewing its diff: look for regressions, N+1 queries and memory issues, then write a Markdown report. This is a report-only review: no environment is started and no tests are run.'
+    }
+    return 'Audit this merge request\'s performance with the bash tool: bring up the environment with `govard env up`, run the test suite with `govard shell -c "<command>"`, look for regressions, then write a Markdown report. '
+      + 'Always tear the environment down with `govard env down -v` before you finish, even when a step failed. '
+      + 'If the govard CLI is unavailable or the environment cannot start (command not found, no Docker), do not retry: fall back to a report-only review of the diff and state in the report that no tests were run.'
   }
   return 'Audit this merge request\'s performance from the static diff and checked-out code only. '
     + 'No runtime environment exists in this container: ignore the auditor preset\'s environment steps '
@@ -1277,7 +1284,7 @@ export function apply(ctx: Context, config: Config): void {
     }
     ctx.sessionTitle.rename(handle.agent.session, `Maestro Auditor — MR !${payload.mrIid} (${payload.projectPath})`)
     try {
-      const prompt = buildAuditorPrompt({ staticOnly: opts?.staticOnly === true })
+      const prompt = buildAuditorPrompt({ staticOnly: opts?.staticOnly === true, cliAvailable: detectGovardLint(ctx, handle.agent) })
       handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: prompt }], source: { kind: REVIEW_SOURCE_KIND } }))
       await whenIdleWithTimeout(handle, effectiveAgentTimeoutMs)
       const output = auditorOutputFromSession(handle.agent.session)
