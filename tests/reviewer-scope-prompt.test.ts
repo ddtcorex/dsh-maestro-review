@@ -4,15 +4,24 @@ import { buildReviewerScopePrompt } from '../src/host/orchestrator.js'
 const LINT = { worktreePath: '/tmp/wt', base: 'abc123' }
 
 describe('buildReviewerScopePrompt', () => {
-  it('mandates at least one govard_audit_lint call for full reviews', () => {
+  it('mandates at least one govard CLI lint run through the bash tool for full reviews', () => {
     const prompt = buildReviewerScopePrompt({ scopeKind: 'full', mode: 'deep', profileInstruction: '', lint: LINT })
-    expect(prompt).toContain('govard_audit_lint')
-    expect(prompt).toMatch(/MUST call govard_audit_lint at least once/)
+    expect(prompt).toMatch(/MUST run the govard lint with the bash tool at least once/)
+    expect(prompt).toContain('govard audit run --checks lint --format json --mode auto --timeout auto --lint-provider govard --scope diff --base "abc123"')
     expect(prompt).toContain('report_review_findings exactly once')
   })
   it('mandates lint for discussion-scope reviews too', () => {
     const prompt = buildReviewerScopePrompt({ scopeKind: 'discussion', discussionId: 'd1', path: 'a.php', line: 10, profileInstruction: '', lint: LINT })
-    expect(prompt).toMatch(/MUST call govard_audit_lint at least once/)
+    expect(prompt).toMatch(/MUST run the govard lint with the bash tool at least once/)
+  })
+  it('never calls a retired govard tool', () => {
+    const prompt = buildReviewerScopePrompt({ scopeKind: 'full', mode: 'deep', profileInstruction: '', lint: LINT })
+    expect(prompt).not.toMatch(/govard_[a-z_]+/)
+  })
+  it('keeps a lint run that cannot execute from failing or blocking the review', () => {
+    const prompt = buildReviewerScopePrompt({ scopeKind: 'full', mode: 'deep', profileInstruction: '', lint: LINT })
+    expect(prompt).toMatch(/not a finding/)
+    expect(prompt).toMatch(/lint was unavailable/)
   })
   it('keeps the dedup rule for full reviews', () => {
     const prompt = buildReviewerScopePrompt({ scopeKind: 'full', mode: 'quick', profileInstruction: '', lint: LINT })
@@ -24,19 +33,18 @@ describe('buildReviewerScopePrompt', () => {
     expect(prompt).toMatch(/never (file|post) a finding (located |positioned )?on a deleted file/i)
   })
 
-  // The lint rule used to be unconditional and used to promise a wired base.
-  // dsh-maestro-govard owns the tool and registers it globally, so review
-  // asks the registry instead of mounting a fork, and carries the MR base sha
-  // in the prompt because nothing wires it as a tool default any more.
+  // The lint rule is conditional: it is only demanded when the bash tool and a
+  // govard binary are both available, and it carries the MR base sha and the
+  // worktree in the command because nothing wires them as defaults.
   it('names the worktree and base the reviewer must pass', () => {
     const prompt = buildReviewerScopePrompt({ scopeKind: 'full', mode: 'deep', profileInstruction: '', lint: LINT })
-    expect(prompt).toContain('worktreePath "/tmp/wt"')
-    expect(prompt).toContain('base "abc123"')
+    expect(prompt).toContain('workdir "/tmp/wt"')
+    expect(prompt).toContain('--base "abc123"')
     expect(prompt).not.toContain('no base arg needed')
   })
-  it('omits the lint rule entirely when the owning tool is not visible', () => {
+  it('omits the lint rule entirely when the bash tool or the govard binary is not available', () => {
     const prompt = buildReviewerScopePrompt({ scopeKind: 'full', mode: 'deep', profileInstruction: '', lint: null })
-    expect(prompt).not.toContain('govard_audit_lint')
+    expect(prompt).not.toContain('govard audit')
     expect(prompt).not.toContain('LINT RULE')
     // Everything else about the review still stands.
     expect(prompt).toContain('report_review_findings')

@@ -122,3 +122,50 @@ describe.each(['maestro-reviewer', 'maestro-auditor'])('%s delegation rows', (di
     expect(block).toMatch(/^\s+maxDepth: provider-managed$/m)
   })
 })
+
+/**
+ * The govard plugin is not part of this harness any more: a preset row naming a
+ * module of it fails the plugin-tree load, and a persona step naming one of its
+ * tools sends the model after a tool that is never registered.
+ */
+describe.each(PRESET_DIRS)('%s has no govard plugin coupling', (dir) => {
+  const yml = read(dir)
+
+  it('names no module of the retired govard plugin', () => {
+    expect(yml).not.toMatch(/dsh-maestro-govard/)
+  })
+
+  it('tells the model to call none of the retired govard or workspace tools', () => {
+    expect(yml).not.toMatch(/\bgovard_[a-z_]+/)
+    expect(yml).not.toMatch(/\bmaestro_(read|write|list)_file\b/)
+  })
+})
+
+describe('maestro-auditor persona drives the environment through the govard CLI', () => {
+  const block = rowBlock(read('maestro-auditor'), 'persona')
+
+  it('brings the environment up, runs tests in it and tears it down with CLI commands', () => {
+    expect(block).toMatch(/bash tool/)
+    expect(block).toContain('govard env up')
+    expect(block).toContain('govard shell -c')
+    expect(block).toContain('govard env down -v')
+  })
+
+  it('falls back to a report-only diff review when the CLI is unavailable', () => {
+    expect(block).toMatch(/gitlab_get_mr_diff/)
+    expect(block).toMatch(/report-only/)
+    expect(block).toMatch(/no tests were run/)
+  })
+
+  it('still leaves posting the combined report to the orchestrator', () => {
+    expect(block).toMatch(/Do not call gitlab_post_mr_comment yourself/)
+  })
+})
+
+describe('maestro-coder persona runs unit tests through the govard CLI', () => {
+  const yml = read('maestro-coder')
+  it('names the in-environment shell command, not a retired tool', () => {
+    expect(yml).toContain('govard shell -c')
+    expect(yml).toMatch(/bash tool/)
+  })
+})

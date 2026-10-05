@@ -78,11 +78,7 @@ pnpm test        # vitest run
 pnpm build       # tsc — ensures lib/ is not stale
 ```
 
-After client changes, also rebuild the browser bundle:
-
-```bash
-pnpm run build:client  # browser bundle -> lib/client.js (if script exists)
-```
+`pnpm run build` also rebuilds the browser bundle (`lib/client.js`), so no separate client build step is needed after client changes.
 
 Do not claim verified/done/clean without having actually run the checks — be ready to paste exact command output in the PR.
 

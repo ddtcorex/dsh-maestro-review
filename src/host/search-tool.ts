@@ -16,10 +16,9 @@ export const Config: z<Config> = z.object({
 })
 
 /**
- * Same root-resolution rule as the workspace tools (parity with
- * @ddtcorex/dsh-maestro-govard/src/workspace-tool.ts): explicit config wins,
- * otherwise the calling agent's per-session workspace so review agents search
- * their own worktree instead of the harness process cwd.
+ * Root resolution: explicit config wins, otherwise the calling agent's
+ * per-session workspace so review agents search their own worktree instead of
+ * the harness process cwd.
  */
 interface SessionCwdSource {
   agent?: { session?: { header?: { cwd?: string } } }

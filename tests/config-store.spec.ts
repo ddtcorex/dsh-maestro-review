@@ -26,7 +26,14 @@ describe('config-store v2 (lib-backed adapter)', () => {
     const cfg = await loadUserConfig(home)
     expect(cfg.gitlabBaseUrl).toBe('https://g')
     expect(cfg.reviewModel).toEqual({ provider: 'openai', model: 'gpt-x' })
-    expect(cfg.telegramChatId).toBe('42')
+    // telegramChatId is saved but NOT read back: notifier ownership moved to
+    // dsh-maestro-notifier, so review's load is scoped to the keys review owns
+    // (see REVIEW_OWNED_KEYS and tests/config-scope.spec.ts). This assertion
+    // used to expect '42' — it pinned the leak.
+    expect(cfg.telegramChatId).toBeUndefined()
+    // The write still landed in the shared store; scoping is a READ boundary.
+    const store = JSON.parse(await readFile(join(home, 'dsh-maestro-config', 'settings.json'), 'utf8'))
+    expect(store.domains.notifier.telegram.chatId).toBe('42')
   })
 
   it('lastTunnelRunning is machine state — routed to the package sidecar, not settings', async () => {
@@ -39,12 +46,18 @@ describe('config-store v2 (lib-backed adapter)', () => {
   })
 
   it('save merges without losing sibling keys across domains', async () => {
+    // tunnelHostname is remote's key, and review's load no longer returns it —
+    // but the SAVE still routes it to the shared tunnel domain, and a sibling
+    // gitlab key written afterwards must survive it. Assert the store, not the
+    // scoped read: this test is about merge semantics, not read scope.
     await saveUserConfig({ gitlabBaseUrl: 'https://g', tunnelHostname: 'h' }, home)
     await saveUserConfig({ gitlabToken: 'late' }, home)
     const cfg = await loadUserConfig(home)
     expect(cfg.gitlabBaseUrl).toBe('https://g') // sibling survived
     expect(cfg.gitlabToken).toBe('late')
-    expect(cfg.tunnelHostname).toBe('h')
+    expect(cfg.tunnelHostname).toBeUndefined()
+    const store = JSON.parse(await readFile(join(home, 'dsh-maestro-config', 'settings.json'), 'utf8'))
+    expect(store.domains.tunnel.hostname).toBe('h')
   })
 
   it('sidecar file is owner-only (0600)', async () => {
