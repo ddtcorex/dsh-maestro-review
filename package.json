@@ -2,7 +2,7 @@
   "name": "@ddtcorex/dsh-maestro-review",
   "private": false,
   "version": "0.10.0",
-  "description": "Maestro Review — pluggable ReviewProvider (GitLab/GitHub) + orchestrator for automated MR review",
+  "description": "Maestro Review \u2014 pluggable ReviewProvider (GitLab/GitHub) + orchestrator for automated MR review",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -36,7 +36,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json && tsc -p tsconfig.client.json && node scripts/build-client.mjs",
-    "test": "vitest run",
+    "test": "NODE_ENV=test vitest run",
     "verify": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
     "docker:build": "docker build -f docker/Dockerfile -t ddtcorex/maestro-reviewer:0.10.0 -t ddtcorex/maestro-reviewer:latest ."
   },
@@ -59,15 +59,18 @@
     "@deepseek-ai/dsh-session-title": "0.2.0-rc.2",
     "@deepseek-ai/dsh-subagent": "0.2.0-rc.2",
     "@deepseek-ai/dsh-tools": "0.2.0-rc.2",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
     "@types/node": "^22.0.0",
-    "typescript": "^5.8.0",
-    "vitest": "^3.2.4",
-    "yaml": "^2.9.0",
     "@types/react": "~18.3.1",
     "@types/react-dom": "~18.3.0",
     "esbuild": "^0.25.12",
+    "jsdom": "^30.0.1",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.4",
+    "yaml": "^2.9.0"
   },
   "dsh": {
     "bundle": {
