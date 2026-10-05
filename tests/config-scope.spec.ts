@@ -36,7 +36,7 @@ async function seedSharedStore(): Promise<void> {
         },
         review: { model: { provider: 'openai', model: 'gpt-x' } },
         tunnel: {
-          hostname: 'dsh-home.example.com',
+          hostname: 'tunnel.example.invalid',
           id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
           // A path-shaped value on purpose: the leak that matters is the
           // credentials-file path, so the fixture must carry one.
