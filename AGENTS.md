@@ -4,7 +4,7 @@
 
 ## Purpose
 
-Merge-request (MR) review plugin for the DeepSeek Harness (DSH): a pluggable review pipeline (webhook → orchestrator → review-intake → findings) with GitLab implemented and GitHub stubbed, plus review history/signals and govard/workspace tools.
+Merge-request (MR) review plugin for the DeepSeek Harness (DSH): a pluggable review pipeline (webhook → orchestrator → review-intake → findings) with GitLab implemented and GitHub stubbed, plus review history/signals and the review-run tools.
 
 Names by boundary: npm package = `@ddtcorex/dsh-maestro-review`; Cordis patch rows = `maestro-review-webhook`, `maestro-review-orchestrator`, `maestro-review-settings-rpc`.
 
@@ -25,7 +25,7 @@ Host code lives in `src/host/` (flat `rootDir`, emits `lib/index.js`):
 - `gitlab-auth.ts` — header selection (`PRIVATE-TOKEN` vs `JOB-TOKEN` via `GITLAB_TOKEN_KIND`).
 - `settings-rpc.ts` — settings RPC (row `maestro-review-settings-rpc`).
 - `config-store.ts` / `pin-store.ts` / `secure-compare.ts` — config + PIN auth (constant-time).
-- `govard-tool.ts` / `workspace-tool.ts` — govard + workspace tooling.
+- `govard-lint-detection.ts` — whether `govard_audit_lint` is visible to a review agent (false when no plugin registers it, so the lint rule is then omitted from the prompt).
 - `notify.ts` / `skills-tool.ts` — notifier texts + contract slice (delivery via the optional
   `maestroNotifier` service from `@ddtcorex/dsh-maestro-notifier`) and skills helpers.
 - `events.ts` — typed event contract; `index.ts` — host `apply()`.

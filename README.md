@@ -18,7 +18,7 @@ Part of the Maestro Harness suite (`dsh-maestro-*`). Cordis patch rows:
 - **Webhook intake** — receives GitLab MR events, enqueues reviews (dedup + retention).
 - **Review findings/history/signals** — findings written through the `review-findings`
   tool by tool-only review subagents (never free text); history + signals tracked per MR.
-- **Govard/workspace tooling** available inside review runs.
+- **Review tools** (workspace search, Magento/Hyva scans, query-log stats, GitLab diff tools) mounted into review runs.
 - **Client half** — settings section rendered into DSH Web slots; notification copy stays
   here, delivery goes through the optional `maestroNotifier` service.
 
