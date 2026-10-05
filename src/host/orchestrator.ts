@@ -27,7 +27,7 @@ import * as PhtmlEscapeScanTool from './phtml-escape-scan-tool.js'
 import * as ScopeSplitTool from './scope-split-tool.js'
 import * as PerfLogStatsTool from './perf-log-stats-tool.js'
 import * as ReviewToolPolicy from './tool-policy.js'
-import { detectGovardLint } from './govard-lint-detection.js'
+import { detectGovardLint, govardOnPath } from './govard-lint-detection.js'
 import type { ReviewFinding, FindingSeverity } from './review-findings-tool.js'
 import type { ReviewRequest, ReviewResult } from './events.js'
 import { loadUserConfig, type MaestroUserConfig, type ProjectMapping, type ReviewModelSelection } from './config-store.js'
@@ -427,6 +427,13 @@ export interface ReviewAndAuditDeps {
   removeWorktree(worktreePath: string): Promise<void>
   runReviewer(worktreePath: string, payload: ReviewRequest): Promise<ReviewOutcome>
   runAuditor(worktreePath: string, payload: ReviewRequest): Promise<string>
+  /**
+   * Deterministic environment teardown, run in the `finally` of a deep audit
+   * BEFORE `removeWorktree`. Wired only for the CLI auditor flow; the prompt's
+   * own `govard env down -v` step is a courtesy, never the guarantee. Best
+   * effort: a throw is logged and ignored.
+   */
+  teardownEnvironment?(worktreePath: string): Promise<void>
   postComment(body: string): Promise<void>
   replyToDiscussion(discussionId: string, body: string): Promise<void>
   writeFailedReport(mrIid: number, body: string): Promise<void>
@@ -733,7 +740,7 @@ export function buildAuditorPrompt(opts: { staticOnly: boolean; cliAvailable?: b
       return 'Audit this merge request\'s performance by reviewing its diff: look for regressions, N+1 queries and memory issues, then write a Markdown report. This is a report-only review: no environment is started and no tests are run.'
     }
     return 'Audit this merge request\'s performance with the bash tool: bring up the environment with `govard env up`, run the test suite with `govard shell -c "<command>"`, look for regressions, then write a Markdown report. '
-      + 'Always tear the environment down with `govard env down -v` before you finish, even when a step failed. '
+      + 'Always tear the environment down with `govard env down -v` before you finish, even when a step failed (the orchestrator also tears it down). '
       + 'If the govard CLI is unavailable or the environment cannot start (command not found, no Docker), do not retry: fall back to a report-only review of the diff and state in the report that no tests were run.'
   }
   return 'Audit this merge request\'s performance from the static diff and checked-out code only. '
@@ -741,6 +748,25 @@ export function buildAuditorPrompt(opts: { staticOnly: boolean; cliAvailable?: b
     + '(do not bring anything up, do not run the test suite, do not tear anything down). '
     + 'Look for regressions by static analysis (diff, dependencies, query/shape risks), then write a Markdown report '
     + 'and OMIT the Environment & Test Suite section entirely — never report it as blocked.'
+}
+
+/** Upper bound for the best-effort `govard env down -v` run by the orchestrator. */
+export const GOVARD_TEARDOWN_TIMEOUT_MS = 120_000
+
+type TeardownRun = (file: string, args: string[], opts: { cwd: string; timeout: number }) => Promise<unknown>
+
+/**
+ * Tear down the review worktree's govard environment (`govard env down -v`,
+ * cwd = the worktree, whose `.govard.local.yml` names the per-MR project).
+ * Never throws: it runs in cleanup paths where a failure must not mask the
+ * review result, so a failure is logged as a warning instead.
+ */
+export async function teardownGovardEnvironment(worktreePath: string, run: TeardownRun = execFileAsync): Promise<void> {
+  try {
+    await run('govard', ['env', 'down', '-v'], { cwd: worktreePath, timeout: GOVARD_TEARDOWN_TIMEOUT_MS })
+  } catch (err) {
+    console.warn(`maestro-orchestrator: govard env down -v failed in ${worktreePath}: ${err instanceof Error ? err.message : String(err)}`)
+  }
 }
 
 export async function runReviewAndAudit(payload: ReviewRequest, deps: ReviewAndAuditDeps): Promise<string> {
@@ -754,9 +780,9 @@ export async function runReviewAndAudit(payload: ReviewRequest, deps: ReviewAndA
   inFlightKeys.add(key)
   try {
     const worktreePath = await deps.ensureWorktree(deps.localRepoPath, payload.sourceBranch, payload.projectId, payload.mrIid, reviewKeyHash(payload))
+    const shouldAudit = payload.scope.kind === 'mr' && payload.mode === 'deep'
     try {
       const sections: string[] = []
-      const shouldAudit = payload.scope.kind === 'mr' && payload.mode === 'deep'
       const settled = await Promise.allSettled([
         deps.runReviewer(worktreePath, payload),
         ...(shouldAudit ? [deps.runAuditor(worktreePath, payload)] : []),
@@ -804,6 +830,13 @@ export async function runReviewAndAudit(payload: ReviewRequest, deps: ReviewAndA
       }
       return body
     } finally {
+      if (shouldAudit && deps.teardownEnvironment !== undefined) {
+        try {
+          await deps.teardownEnvironment(worktreePath)
+        } catch (err) {
+          console.warn(`maestro-orchestrator: environment teardown failed for ${worktreePath}: ${err instanceof Error ? err.message : String(err)}`)
+        }
+      }
       await deps.removeWorktree(worktreePath)
     }
   } finally {
@@ -956,6 +989,15 @@ export async function fetchMrBaseSha(
   }
 }
 
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export async function ensureWorktree(localRepoPath: string, sourceBranch: string, projectId: number, mrIid: number, keySuffix?: string): Promise<string> {
   assertSafeBranchName(sourceBranch)
   const worktreePath = join('/tmp', `maestro-mr-${projectId}-${mrIid}${keySuffix === undefined ? '' : `-${keySuffix}`}`)
@@ -972,7 +1014,11 @@ export async function ensureWorktree(localRepoPath: string, sourceBranch: string
   }
   // A host restart can interrupt an active review before its `finally` cleanup.
   // Recover only this deterministic Maestro-owned path so the next delivery can
-  // retry; an unrelated worktree is never targeted.
+  // retry; an unrelated worktree is never targeted. An interrupted deep audit
+  // may also have left its govard containers up, so the stale worktree's
+  // environment goes down first (only when it carries the per-MR override that
+  // names the project, and best effort).
+  if (govardOnPath() && await pathExists(join(worktreePath, '.govard.local.yml'))) await teardownGovardEnvironment(worktreePath)
   await execFileAsync('git', ['worktree', 'remove', '--force', worktreePath], { cwd: localRepoPath, timeout: GIT_TIMEOUT_MS })
     .catch(() => {})
   await execFileAsync('git', ['worktree', 'add', '--', worktreePath, `origin/${sourceBranch}`], { cwd: localRepoPath, timeout: GIT_TIMEOUT_MS })
@@ -1536,6 +1582,7 @@ export function apply(ctx: Context, config: Config): void {
             localRepoPath: mapping.localRepoPath,
             ensureWorktree,
             removeWorktree,
+            ...(govardOnPath() ? { teardownEnvironment: teardownGovardEnvironment } : {}),
             runReviewer: (worktreePath, p) => runReviewer(worktreePath, p, resolved, mapping.reviewProfile ?? 'magento2', reviewModelSelection, incrementalBlock),
             runAuditor: (worktreePath, p) => runAuditor(worktreePath, p, resolved, reviewModelSelection),
             postComment,
