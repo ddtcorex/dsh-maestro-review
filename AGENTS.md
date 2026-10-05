@@ -173,7 +173,7 @@ batch.
    git -C <repo> push origin vX.Y.Z
    ```
    Pushing the tag triggers `.github/workflows/release.yml` →
-   `dsh-maestro-ci`'s `node-release.yml` (`pnpm publish --access public` +
+   `maestro-ci`'s `node-release.yml` (`pnpm publish --access public` +
    GitHub Release). Never run `pnpm publish`/`npm publish` manually — it
    bypasses the Release workflow and leaves `CHANGELOG`/GitHub Release out
    of sync. Confirm both: `gh run watch <run-id>` on the release workflow,
