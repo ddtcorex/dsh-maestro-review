@@ -16,7 +16,6 @@ import type { ModelSelection } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type {} from '@deepseek-ai/dsh-session-title'
-import * as GovardTool from './govard-tool.js'
 import * as GitlabClient from './gitlab-client.js'
 import * as ReviewFindingsTool from './review-findings-tool.js'
 import * as SearchTool from './search-tool.js'
@@ -26,9 +25,9 @@ import * as LayoutXmlTool from './layout-xml-tool.js'
 import * as ModuleCheckTool from './module-check-tool.js'
 import * as PhtmlEscapeScanTool from './phtml-escape-scan-tool.js'
 import * as ScopeSplitTool from './scope-split-tool.js'
-import * as GovardAuditLintTool from './govard-audit-lint-tool.js'
 import * as PerfLogStatsTool from './perf-log-stats-tool.js'
 import * as ReviewToolPolicy from './tool-policy.js'
+import { detectGovardLint } from './govard-lint-detection.js'
 import type { ReviewFinding, FindingSeverity } from './review-findings-tool.js'
 import type { ReviewRequest, ReviewResult } from './events.js'
 import { loadUserConfig, type MaestroUserConfig, type ProjectMapping, type ReviewModelSelection } from './config-store.js'
@@ -103,6 +102,14 @@ export interface ReviewerScopePromptOpts {
   line?: number
   mode?: string
   profileInstruction: string
+  /**
+   * The lint call to demand, or null when the owning plugin's tool is not
+   * visible to this agent. `dsh-maestro-govard` registers `govard_audit_lint`
+   * in the host tool layer, which every agent scope inherits, so review no
+   * longer mounts it and the MR base sha it used to pass as `defaultBase` has
+   * to travel in the prompt instead.
+   */
+  lint: { worktreePath: string; base: string } | null
 }
 
 /**
@@ -111,7 +118,7 @@ export interface ReviewerScopePromptOpts {
  * requires at least one call before report_review_findings. Pure for testing.
  */
 export function buildReviewerScopePrompt(opts: ReviewerScopePromptOpts): string {
-  const lintRule = 'LINT RULE: you MUST call govard_audit_lint at least once (scope "diff"; the MR base default is already wired, no base arg needed) before report_review_findings. A review with no lint call is incomplete.'
+  const lintRule = opts.lint === null ? '' : ` LINT RULE: you MUST call govard_audit_lint at least once before report_review_findings, passing worktreePath "${opts.lint.worktreePath}" and base "${opts.lint.base}". A review with no lint call is incomplete.`
   if (opts.scopeKind === 'discussion') {
     return `${opts.profileInstruction}Review only the requested inline discussion ${opts.discussionId} at ${opts.path}:${opts.line}. Do not review unrelated files or start a broad audit. Call gitlab_get_mr_diff, then gitlab_get_file_diff for the file under review, then call report_review_findings exactly once when done. ${lintRule}`
   }
@@ -1147,7 +1154,6 @@ export function apply(ctx: Context, config: Config): void {
               await agentCtx.plugin(ModuleCheckTool, { rootPath: worktreePath })
               await agentCtx.plugin(PhtmlEscapeScanTool, { rootPath: worktreePath })
               await agentCtx.plugin(ScopeSplitTool, { rootPath: worktreePath })
-              await agentCtx.plugin(GovardAuditLintTool, { rootPath: worktreePath, defaultBase: lintDefaultBase, allowXdebug: true })
               await agentCtx.plugin(PerfLogStatsTool, { rootPath: worktreePath })
             }
           },
@@ -1162,9 +1168,16 @@ export function apply(ctx: Context, config: Config): void {
         const profileInstruction = reviewProfile === undefined
           ? 'This is a diff-only review with no local checkout or Magento environment. Do not claim that tests, static analysis, or Magento runtime validation ran. '
           : `Call maestro_load_review_profile with {"profile":"${reviewProfile}"} before examining code. `
+        // The owning plugin registers govard_audit_lint globally, so the
+        // reviewer may already be able to call it. Only demand the call when
+        // the registry resolves it for this agent, and carry the MR base sha
+        // in the prompt because nothing wires it as a tool default any more.
+        const lint = worktreePath !== undefined && lintDefaultBase && detectGovardLint(ctx, handle.agent)
+          ? { worktreePath, base: lintDefaultBase }
+          : null
         let scopePrompt = payload.scope.kind === 'discussion'
-          ? buildReviewerScopePrompt({ scopeKind: 'discussion', discussionId: payload.scope.discussionId, path: payload.scope.path, line: payload.scope.line, profileInstruction })
-          : buildReviewerScopePrompt({ scopeKind: 'full', mode: payload.mode, profileInstruction })
+          ? buildReviewerScopePrompt({ scopeKind: 'discussion', discussionId: payload.scope.discussionId, path: payload.scope.path, line: payload.scope.line, profileInstruction, lint })
+          : buildReviewerScopePrompt({ scopeKind: 'full', mode: payload.mode, profileInstruction, lint })
         if (incrementalBlock !== undefined) scopePrompt = `${incrementalBlock}\n\n${scopePrompt}`
         handle.agent.followup(createUserMessage({
           content: [{ type: 'text', text: scopePrompt }],
@@ -1251,7 +1264,6 @@ export function apply(ctx: Context, config: Config): void {
           installModelSelection(agentCtx, { current: agentOptions, assembled: undefined })
           await agentCtx.plugin(ReviewToolPolicy)
           await mountAgentPreset(ctx.agentPresets, agentCtx, 'dsh-maestro-auditor')
-          await agentCtx.plugin(GovardTool, { rootPath: worktreePath })
           await agentCtx.plugin(GitlabClient, {
             baseUrl: effective.gitlabBaseUrl,
             projectId: payload.projectId,
