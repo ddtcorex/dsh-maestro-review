@@ -8,3 +8,6 @@ lib/
 
 # DSH scaffolds this profile root entry list on load; never commit it.
 profiles/reviewer-ci/cordis.yml
+
+# tsc client output (tsconfig.client.json outDir), like core's lib/: build artifact.
+.client-build/
