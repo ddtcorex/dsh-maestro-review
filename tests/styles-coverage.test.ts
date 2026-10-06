@@ -147,3 +147,16 @@ describe('review settings stylesheet', () => {
     expect(REVIEW_CSS).toMatch(/input\[type="checkbox"\]\s*\{[^}]*width:\s*16px/s)
   })
 })
+describe('review secret save button height', () => {
+  it('equals the shared field height, read from the field rule', () => {
+    // Compared to the FIELD rule instead of hardcoding 44 twice: a later change
+    // to the shared box then fails here instead of silently desyncing the save
+    // button again (it measured 32px against a 44px field before this).
+    const css = stripped(REVIEW_CSS)
+    const field = /min-height:\s*(\d+px)/.exec(fieldRuleBody(REVIEW_CSS, '[data-review-control]'))?.[1]
+    expect(field, 'the field rule must declare a min-height').toBeTruthy()
+    const button = /\[data-review-secret-group\] button \{([^}]*)\}/.exec(css)?.[1] ?? ''
+    expect(button, 'the secret-group button rule must exist').not.toBe('')
+    expect(button).toMatch(new RegExp(`min-height:\\s*${field}`))
+  })
+})
