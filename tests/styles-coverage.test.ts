@@ -111,7 +111,9 @@ describe('review settings stylesheet', () => {
     // combined selector list covers every non-checkbox control the section
     // emits, all at one geometry. A type missing from that list is exactly what
     // rendered the two secret fields at the UA default: 21px tall, no radius.
-    const boxRules = [...REVIEW_CSS.matchAll(/(\[data-review-control\][^{}]*)\{([^}]*min-height:\s*44px[^}]*)\}/g)]
+    // `:has(...) [data-review-control]` rules size the checkbox row's tap target, not a
+    // field, so the (?<![)>] ) lookbehind keeps them out of this field-box heuristic.
+    const boxRules = [...REVIEW_CSS.matchAll(/(?<![)>] )(\[data-review-control\][^{}]*)\{([^}]*min-height:\s*44px[^}]*)\}/g)]
     expect(boxRules.length, 'no control box rule found').toBeGreaterThan(0)
     const selectors = boxRules.map((m) => m[1]!).join(' , ')
     for (const type of controlTypesEmitted()) {

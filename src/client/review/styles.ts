@@ -102,7 +102,16 @@ export const REVIEW_CSS = `
      and a wrapped one reads as a third column. */
   [data-review-row] { flex-direction: column; align-items: stretch; gap: 8px; }
   [data-review-row-text] { padding-right: 0; }
-  [data-review-control] { justify-content: flex-start; }
+  /* Every field takes the full row width, with or without a Save button: the
+     button stays on the same row and the input takes the rest. */
+  [data-review-control] { justify-content: flex-start; width: 100%; }
+  [data-review-control] input[type="text"], [data-review-control] input[type="password"], [data-review-control] select { flex: 1 1 auto; min-width: 0; width: 100%; }
+  [data-review-secret-group] { width: 100%; min-width: 0; }
+  /* A checkbox row does not stack: label and hint stay left, the box is held
+     right as a 44px tap target on the same line. Stacked, it left a lone 16px
+     box on a line of its own under the label. */
+  [data-review-row]:has(> [data-review-control] > input[type="checkbox"]:only-child) { flex-direction: row; align-items: center; gap: 12px; }
+  [data-review-row]:has(> [data-review-control] > input[type="checkbox"]:only-child) [data-review-control] { flex: none; width: auto; min-width: 44px; min-height: 44px; justify-content: center; }
 }
 
 @media (max-width: 480px) {
