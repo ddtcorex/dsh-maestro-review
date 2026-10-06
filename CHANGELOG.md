@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.11.1] - 2026-10-06
+
+### Fixed
+
+- **Settings fields share one box.** The host's own `ConfigField` declaration plus a 44px touch floor; the secret Save button beside its field is 44px tall to equal it.
+
 ## [0.11.0] - 2026-10-05
 
 ### Security
