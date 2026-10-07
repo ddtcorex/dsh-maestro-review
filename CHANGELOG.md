@@ -5,6 +5,7 @@
 ### Removed
 
 - **Unmounted tool modules.** `git_worktree`, `maestro_plan_track` and `maestro_tdd_evidence` were never registered by any Cordis row, preset or the orchestrator, so the three modules, their tests and the `git_worktree` rows of the `dsh-native-tools` skill are gone.
+- **`webhook-secret.ts`.** `generateWebhookSecret`, `gitlabWebhookUrl` and `GITLAB_WEBHOOK_PATH` (added in 0.11.0) were never called by the settings section or any other code, so the module and its spec are removed. The `webhookSecret` setting itself is unchanged.
 
 ## [0.11.2] - 2026-10-06
 
