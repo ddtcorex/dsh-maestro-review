@@ -1,7 +1,7 @@
 # @ddtcorex/dsh-maestro-review
 
 Automated merge-request review for the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness):
-pluggable **ReviewProvider** (GitLab first), an orchestrator that spins up reviewer/auditor
+a GitLab merge-request pipeline, an orchestrator that spins up reviewer/auditor
 child agents on fresh worktrees, webhook intake for GitLab events, and a settings/tunnel
 client UI injected into the DSH Web slots.
 
@@ -12,8 +12,7 @@ all served by this npm package.
 
 ## What it provides
 
-- **ReviewProvider abstraction** — GitLab client today; other forges plug in behind the same
-  interface.
+- **GitLab pipeline**: webhook and CI intake, MR diff/thread tools and finding posting for GitLab.
 - **Orchestrator** — reviewer + auditor agent runs against a disposable worktree of the MR,
   model selection overridable globally (`reviewModel`) and per project mapping.
 - **Webhook intake** — receives GitLab MR events, enqueues reviews (dedup + retention).

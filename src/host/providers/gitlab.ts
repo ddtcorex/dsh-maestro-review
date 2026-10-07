@@ -5,7 +5,6 @@ import { loadUserConfig } from '../config-store.js'
 import { secretsMatch } from '../secure-compare.js'
 import type { MrOpenedPayload, ReviewRequest as OrchestratorReviewRequest } from '../events.js'
 import { describeDrop, routeGitlabReviewRequest } from '../review-intake.js'
-import type { ReviewProvider, ReviewRequest } from './interface.js'
 
 export const name = 'maestro-review-webhook'
 export const inject = ['webServer'] as const
@@ -64,40 +63,6 @@ function hasValidGitlabMrIdentity(value: unknown): boolean {
   const source = body.object_kind === 'note' ? mergeRequest : attributes
   return typeof project?.id === 'number' && typeof project.path_with_namespace === 'string'
     && typeof source?.iid === 'number' && typeof source.source_branch === 'string'
-}
-
-// ReviewProvider implementation — pluggable interface for orchestrator
-export const gitlabProvider: ReviewProvider = {
-  id: 'gitlab',
-  async intake(req: Request): Promise<ReviewRequest> {
-    // Try to parse the request body as GitLab webhook JSON
-    let body: unknown
-    try {
-      body = await req.clone().json()
-    } catch {
-      // Fallback/STUB: return generic empty request (keeps interface working without GitLab)
-      return { provider: 'gitlab', projectPath: '', mrId: '', profile: 'generic' }
-    }
-    // If body looks like a GitLab MR webhook, map to ReviewRequest
-    if (typeof body === 'object' && body !== null) {
-      const b = body as Record<string, unknown>
-      const project = b.project as Record<string, unknown> | undefined
-      const attrs = b.object_attributes as Record<string, unknown> | undefined
-      const mr = b.merge_request as Record<string, unknown> | undefined
-      const source = b.object_kind === 'note' ? mr : attrs
-      const projectPath = typeof project?.path_with_namespace === 'string' ? project.path_with_namespace : ''
-      const mrId = typeof source?.iid === 'number' ? String(source.iid) : ''
-      if (projectPath && mrId) {
-        return { provider: 'gitlab', projectPath, mrId, profile: 'generic' }
-      }
-    }
-    // Fallback stub
-    return { provider: 'gitlab', projectPath: '', mrId: '', profile: 'generic' }
-  },
-  async postFindings(_findings: any[]): Promise<void> {
-    // Real posting is handled by orchestrator's GitLab API flow (postReviewFindings)
-    // Keep interface compliant — no-op here; orchestrator will call postReviewFindings separately
-  },
 }
 
 export function apply(ctx: Context, config: Config): void {

@@ -36,27 +36,11 @@ import { buildIncrementalBlock, fetchCompare, fetchMrDetailHeadSha } from './inc
 import { createReviewSignals } from './review-signals.js'
 import { reviewDigestText, type NotifierLike } from './notify.js'
 import { loadedReviewProfile, type ReviewSkillProfile } from './skills-tool.js'
-import type { ReviewProvider } from './providers/interface.js'
-import { gitlabProvider } from './providers/gitlab.js'
 import { REVIEW_SOURCE_KIND } from './source.js'
 import './events.js'
 import { gitlabAuthHeaders } from './gitlab-auth.js'
 import { reviewMarker, resolveFlow, type ReviewFlow } from './review-marker.js'
 import { cloneSourceRepo, defaultRun } from './ci-clone.js'
-
-// Provider-aware wrapper — orchestrator can run reviews via any ReviewProvider.
-// This keeps the GitLab-specific flow intact while allowing Phase C to add GitHub/Jira without modifying core logic.
-export async function runReviewWithProvider(provider: ReviewProvider, request: { provider: string; projectPath: string; mrId: string; profile: string }): Promise<void> {
-  // Currently delegates to GitLab flow; Phase C will branch on provider.id
-  if (provider.id === 'gitlab') {
-    // Orchestrator already handles GitLab via 'maestro/review-request' event
-    // This wrapper exists to prove provider pluggability; real dispatch is via ctx.emit
-    void gitlabProvider
-  }
-  void request
-}
-
-export { gitlabProvider }
 
 const execFileAsync = promisify(execFile)
 const GIT_TIMEOUT_MS = 60_000

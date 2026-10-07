@@ -2,7 +2,7 @@
   "name": "@ddtcorex/dsh-maestro-review",
   "private": false,
   "version": "0.11.2",
-  "description": "Maestro Review — pluggable ReviewProvider (GitLab/GitHub) + orchestrator for automated MR review",
+  "description": "Maestro Review: GitLab review pipeline + orchestrator for automated MR review",
   "license": "MIT",
   "repository": {
     "type": "git",

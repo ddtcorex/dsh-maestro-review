@@ -4,7 +4,7 @@
 
 ## Purpose
 
-Merge-request (MR) review plugin for the DeepSeek Harness (DSH): a pluggable review pipeline (webhook → orchestrator → review-intake → findings) with GitLab implemented and GitHub stubbed, plus review history/signals and the review-run tools.
+Merge-request (MR) review plugin for the DeepSeek Harness (DSH): a review pipeline (webhook → orchestrator → review-intake → findings) for GitLab, plus review history/signals and the review-run tools.
 
 Names by boundary: npm package = `@ddtcorex/dsh-maestro-review`; Cordis patch rows = `maestro-review-host` (the package root, mounts the skill provider), `maestro-review-webhook`, `maestro-review-orchestrator`, `maestro-review-settings-rpc`.
 
@@ -14,9 +14,7 @@ Part of the Maestro Harness suite. Host half + client half (review settings/slot
 
 Host code lives in `src/host/` (flat `rootDir`, emits `lib/index.js`):
 
-- `providers/interface.ts` — the `ReviewProvider` contract (pluggable).
-- `providers/gitlab.ts` — GitLab provider implementation.
-- `providers/github.stub.ts` — GitHub provider stub (implement per contract when needed).
+- `providers/gitlab.ts`: GitLab webhook intake (row `maestro-review-webhook`).
 - `providers/ci-trigger.ts` — CI entry: builds the `ReviewRequest` from env, push-gate, coexistence yield.
 - `orchestrator.ts` — the review pipeline orchestration (`runReview`, comment builders, CI-deep clone branch).
 - `review-intake.ts` — webhook routing (`@bot` mention → quick, `/maestro deep` → deep).
@@ -264,7 +262,7 @@ release, not after one goes wrong.
 
 ## Conventions
 
-- **ReviewProvider is pluggable** — all provider-specific behavior goes behind `providers/interface.ts`. Add a new forge by implementing the interface, never by branching `if gitlab / if github` in the orchestrator.
+- **GitLab only**: there is no provider abstraction. The `ReviewProvider` contract and the GitHub stub were removed as dead code; add one back only together with a real second forge.
 - **Tool-only review subagents**: review/audit subagents run with tool-only presets; findings are written via the `report_review_findings` tool, not free text.
 - **Secrets** — compare PINs/tokens with `secure-compare.ts`; never log or commit real tokens. In CI, `MAESTRO_GITLAB_TOKEN` must be a PAT/group token (`api` scope) — `CI_JOB_TOKEN` is read-only for posting (probed on GitLab 18.11); redact it from clone URLs and errors.
 - **CI flow** — `providers/ci-trigger.ts` owns the push-gate + coexistence yield; the orchestrator's CI-deep branch clones and reuses `runReviewAndAudit` with a plain worktree (no vendor/govard linking) and a static-only auditor prompt. Webhook behavior stays untouched: CI yields, never the reverse.

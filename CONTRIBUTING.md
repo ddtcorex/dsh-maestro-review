@@ -1,6 +1,6 @@
 # Contributing to dsh-maestro-review
 
-Thank you for contributing to **dsh-maestro-review** (`@ddtcorex/dsh-maestro-review`) — the pluggable ReviewProvider (GitLab/GitHub) + orchestrator for automated MR review in DeepSeek Harness.
+Thank you for contributing to **dsh-maestro-review** (`@ddtcorex/dsh-maestro-review`), the GitLab review pipeline + orchestrator for automated MR review in DeepSeek Harness.
 
 ## Getting Started
 
@@ -21,7 +21,7 @@ Thank you for contributing to **dsh-maestro-review** (`@ddtcorex/dsh-maestro-rev
 
    ```
    src/               # host + client plugin source
-   src/providers/     # ReviewProvider contract + GitLab/GitHub implementations
+   src/host/providers/  # GitLab webhook intake and CI trigger
    presets/           # reviewer/auditor agent presets
    client/            # browser bundle source
    cordis.patch.yml   # Cordis rows: maestro-review-webhook / orchestrator / settings-rpc

@@ -14,7 +14,7 @@ body:
       label: Area
       options:
         - Orchestrator / pipeline
-        - ReviewProvider (new forge, GitLab/GitHub)
+        - Review pipeline (new forge, GitLab)
         - Client UI / settings
         - Presets / prompts
         - Documentation / DX
