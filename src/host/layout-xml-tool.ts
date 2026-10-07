@@ -1,4 +1,4 @@
-import { join, resolve, sep, basename, dirname } from 'node:path'
+import { join, resolve, sep, basename } from 'node:path'
 import { readFile, readdir, realpath, stat } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -22,7 +22,6 @@ async function isInsideRoot(root:string, target:string):Promise<boolean>{
 const MAX_FILE_BYTES=1024*1024
 const MAX_FILES=2000
 const SKIP_DIRS=new Set(['.git','node_modules','vendor','pub/static'])
-const LAYOUT_RE = /\/layout\//
 
 // tiny helpers
 function parseAttrs(s:string):Record<string,string>{

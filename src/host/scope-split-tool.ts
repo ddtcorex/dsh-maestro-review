@@ -6,7 +6,6 @@ export const name='maestro-scope-split-tool'
 export const inject=['tools']
 export const Config:z<{rootPath?:string}>=z.object({rootPath:z.string()})
 
-const QUICK_EXTS=new Set(['.phtml','.html','.js','.ts','.less','.css','.xml','.csv','.json'])
 const DEEP_EXTS=new Set(['.php'])
 const QUICK_PATH_HINTS=/^(view\/frontend|view\/adminhtml|i18n)\// 
 const DEEP_PATH_HINTS=/(Plugin\/|Observer\/|Controller\/|Setup\/|Model\/|etc\/(di|acl|webapi)\.xml|composer\.json|registration\.php)/

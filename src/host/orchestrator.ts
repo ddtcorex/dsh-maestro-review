@@ -1268,7 +1268,7 @@ export function apply(ctx: Context, config: Config): void {
           projectId: payload.projectId,
           mrIid: payload.mrIid,
         }
-        for (const [index, finding] of capturedFindings.entries()) {
+        for (const finding of capturedFindings) {
           try {
             await postReviewFindings([finding], findingPoster)
             if (finding.status === 'new') postedNew++

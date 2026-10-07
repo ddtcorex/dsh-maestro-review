@@ -4,7 +4,6 @@ import type { RpcErrorDetailsMap, RpcResult } from '@deepseek-ai/dsh-client-conn
 import { existsSync, statSync } from 'node:fs'
 import { loadUserConfig, saveUserConfig, type MaestroUserConfig } from './config-store.js'
 import { listReviews } from './review-history.js'
-import { type NotifierLike } from './notify.js'
 
 export const name = 'maestro-settings-rpc'
 /**
