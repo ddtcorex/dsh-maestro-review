@@ -76,7 +76,3 @@ export function reviewDigestText(notification: {
 
   return `<b>🤖 Maestro Review</b> — <code>${escapeHtml(notification.projectPath)}</code> ${mrLink}\n<b>Status:</b> ${statusLabel}${metaLine}${findingsLine}${summaryBlock}${footerLink}`
 }
-
-export function pinRotationText(pin: string): string {
-  return `DSH public access PIN was rotated\nNew PIN: ${pin}`
-}
