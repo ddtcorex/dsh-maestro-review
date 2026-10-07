@@ -31,7 +31,7 @@ Host code lives in `src/host/` (flat `rootDir`, emits `lib/index.js`):
 - `events.ts`: typed event contract; `index.ts`: host `apply()` (row `maestro-review-host`); `source.ts`: the source kind stamped on injected review messages; `skill-provider.ts`: registers the bundled `skills/` dir; `tool-policy.ts`: deny-list of host tools a review agent must not call.
 - `gitlab-client.ts`: per-agent GitLab tools (`gitlab_get_mr_diff`, `gitlab_get_file_diff`, `gitlab_list_own_review_threads`, inline comments); `incremental.ts`: incremental re-review context block.
 - `review-findings-tool.ts` registers `report_review_findings` (the single structured findings channel).
-- Review-run tools mounted by the orchestrator: `search-tool.ts`, `hyva-theme-inspect-tool.ts`, `hyva-csp-scan-tool.ts`, `layout-xml-tool.ts`, `module-check-tool.ts`, `phtml-escape-scan-tool.ts`, `scope-split-tool.ts`, `perf-log-stats-tool.ts`; `git-worktree-tool.ts` and `plan-track-tool.ts` / `tdd-evidence-tool.ts` are standalone tool modules not mounted by the orchestrator.
+- Review-run tools mounted by the orchestrator: `search-tool.ts`, `hyva-theme-inspect-tool.ts`, `hyva-csp-scan-tool.ts`, `layout-xml-tool.ts`, `module-check-tool.ts`, `phtml-escape-scan-tool.ts`, `scope-split-tool.ts`, `perf-log-stats-tool.ts`.
 - `augment.d.ts` / `dsh-skill.d.ts`: ambient type declarations.
 - `src/client/`: settings section (`index.tsx`, `review/ReviewSettings.tsx`, `review/styles.ts`, brand mark and nav icon); `scripts/build-client.mjs` bundles it into `lib/client.js` as part of `pnpm build`.
 - `presets/`: agent presets (`maestro-reviewer`, `maestro-auditor` as bundle patch rows, `maestro-coder` as a directory preset); `skills/dsh-native-tools/`: the capability to tool and CLI command map.

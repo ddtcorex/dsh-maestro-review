@@ -30,7 +30,6 @@ const HOST_SOURCES = [
   'phtml-escape-scan-tool.ts',
   'module-check-tool.ts',
   'skills-tool.ts',
-  'git-worktree-tool.ts',
 ]
 
 /**
@@ -46,7 +45,6 @@ const OWNED_BY_THIS_PLUGIN = [
   'phtml_escape_scan',
   'magento_module_check',
   'maestro_get_skills',
-  'git_worktree',
 ]
 
 describe('dsh-native-tools skill', () => {
@@ -117,13 +115,6 @@ describe('dsh-native-tools skill', () => {
     const description = read().match(/^description: (.+)$/m)?.[1] ?? ''
     expect(description).toContain('govard')
     expect(description).toMatch(/CLI/)
-  })
-
-  it('states the required git_worktree argument', () => {
-    // worktreePath is required on every op; an example omitting it is rejected
-    // by the tool registry.
-    const text = read()
-    expect(text).toContain("git_worktree {op:'inspect', worktreePath}")
   })
 
   it('stays a tool map, not a copy of the public skill bodies', () => {

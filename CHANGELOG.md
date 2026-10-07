@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Removed
+
+- **Unmounted tool modules.** `git_worktree`, `maestro_plan_track` and `maestro_tdd_evidence` were never registered by any Cordis row, preset or the orchestrator, so the three modules, their tests and the `git_worktree` rows of the `dsh-native-tools` skill are gone.
+
 ## [0.11.2] - 2026-10-06
 
 ### Fixed
