@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { pinRotationText, reviewDigestText } from '../src/host/notify.ts'
+import { reviewDigestText } from '../src/host/notify.ts'
 
 describe('notify text builders', () => {
   it('renders the review digest outcome line with an optional summary', () => {
@@ -30,9 +30,5 @@ describe('notify text builders', () => {
     expect(html).toContain('Fix &lt;x&gt; &amp; check')
     expect(html).toContain('https://git.example.com/group/project/-/merge_requests/7')
     expect(html).toContain('View MR')
-  })
-
-  it('renders the PIN rotation notice', () => {
-    expect(pinRotationText('87654321')).toBe('DSH public access PIN was rotated\nNew PIN: 87654321')
   })
 })

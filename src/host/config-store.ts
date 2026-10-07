@@ -93,10 +93,6 @@ const REVIEW_OWNED_KEYS = [
  * Machine runtime state (RUNTIME_KEYS) never enters settings — it stays in this
  * package's own sidecar so a settings edit can never silently flip tunnel state.
  */
-export function configStorePath(dshHome?: string): string {
-  return join(resolveDshHome(dshHome), 'dsh-maestro-config', 'settings.json')
-}
-
 function runtimeStatePath(dshHome?: string): string {
   return join(resolveDshHome(dshHome), 'dsh-maestro-review', 'runtime.json')
 }

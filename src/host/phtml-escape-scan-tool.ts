@@ -26,11 +26,6 @@ async function* walkPhtml(dir:string, budget:{files:number}):AsyncGenerator<stri
     budget.files-=1; yield join(dir,e.name)
   }
 }
-function isSafeLine(line:string):boolean{
-  return /\$escaper\s*->\s*escape/.test(line) || /\$block\s*->\s*escape/.test(line) || /->\s*get\w*Html\s*\(/.test(line) || /escapeHtmlAttr/.test(line) && /title=/.test(line) ? true : false
-  // second case handled more precisely below
-}
-
 export function apply(ctx:Context, config:{rootPath?:string}={}):void{
   const configuredRoot=config.rootPath
   ctx.effect(()=>ctx.tools.register(defineTool({

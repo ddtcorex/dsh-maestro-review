@@ -1,4 +1,4 @@
-import { join, resolve, sep, dirname, basename } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import { readFile, readdir, realpath, stat } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'

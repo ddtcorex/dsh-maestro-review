@@ -1,36 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { postReviewFindings, ensureWorktree } from '../src/host/orchestrator.js'
 
-describe('orchestrator', () => {
-  it('exports orchestrator with provider integration', async () => {
-    const mod = await import('../src/host/orchestrator.js')
-    expect(mod).toBeDefined()
-    // Should export either apply or runReviewWithProvider or gitlabProvider re-export
-    expect(mod.gitlabProvider !== undefined || mod.runReviewWithProvider !== undefined || typeof mod.apply === 'function').toBe(true)
-  })
-
-  it('orchestrator imports ReviewProvider types', async () => {
-    const fs = await import('node:fs')
-    let text: string
-    const candidates = [
-      'packages/dsh-maestro-review/src/host/orchestrator.ts',
-      'packages/dsh-maestro-review/src/orchestrator.ts',
-      'src/host/orchestrator.ts',
-      'src/orchestrator.ts',
-    ]
-    for (const c of candidates) {
-      try { text = fs.readFileSync(c, 'utf8'); break; } catch {}
-    }
-    expect(text!).toContain('ReviewProvider')
-  })
-
-  it('review provider pluggability: gitlab vs github', async () => {
-    const { gitlabProvider } = await import('../src/host/providers/gitlab.js')
-    const { githubProvider } = await import('../src/host/providers/github.stub.js')
-    expect(gitlabProvider.id).not.toBe(githubProvider.id)
-  })
-})
-
 describe('postReviewFindings path matching', () => {
   const diffRefs = { base_sha: 'b', start_sha: 's', head_sha: 'h' }
   const CANONICAL = 'app/design/frontend/Vendor/theme/C/templates/x.phtml'

@@ -1,4 +1,4 @@
-import { join, resolve, sep, basename, dirname } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import { readFile, readdir, realpath, stat } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -63,7 +63,6 @@ export function apply(ctx:Context, config:{rootPath?:string}={}):void{
       if(rawPath!==undefined && !(await isInsideRoot(root, rawPath))) return {text:`Path "${rawPath}" escapes the workspace root.`, truncated:false} as never
       let candidates:string[]=[]
       if(rawPath!==undefined){
-        const abs=resolve(root, rawPath)
         // must contain registration.php or etc/module.xml to be considered a module; otherwise empty
         candidates=[rawPath]
       } else {

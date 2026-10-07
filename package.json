@@ -2,7 +2,7 @@
   "name": "@ddtcorex/dsh-maestro-review",
   "private": false,
   "version": "0.11.2",
-  "description": "Maestro Review — pluggable ReviewProvider (GitLab/GitHub) + orchestrator for automated MR review",
+  "description": "Maestro Review: GitLab review pipeline + orchestrator for automated MR review",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -52,7 +52,6 @@
     "@deepseek-ai/dsh-agent": "0.2.0-rc.2",
     "@deepseek-ai/dsh-agent-default-model": "0.2.0-rc.2",
     "@deepseek-ai/dsh-agent-preset-registry": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-attachment": "0.2.0-rc.2",
     "@deepseek-ai/dsh-client-connection": "0.2.0-rc.2",
     "@deepseek-ai/dsh-llm": "0.2.0-rc.2",
     "@deepseek-ai/dsh-session": "0.2.0-rc.2",
