@@ -1,12 +1,16 @@
 # Changelog
 
-## [Unreleased]
+## [0.12.0] - 2026-10-10
 
 ### Removed
 
 - **Unmounted tool modules.** `git_worktree`, `maestro_plan_track` and `maestro_tdd_evidence` were never registered by any Cordis row, preset or the orchestrator, so the three modules, their tests and the `git_worktree` rows of the `dsh-native-tools` skill are gone.
 - **`webhook-secret.ts`.** `generateWebhookSecret`, `gitlabWebhookUrl` and `GITLAB_WEBHOOK_PATH` (added in 0.11.0) were never called by the settings section or any other code, so the module and its spec are removed. The `webhookSecret` setting itself is unchanged.
 - **`ReviewProvider` abstraction.** The `ReviewProvider` interface (`intake`, `postFindings`), the no-op `gitlabProvider`, the throwing GitHub stub and the `runReviewWithProvider` wrapper were never called by the live pipeline and are removed. GitLab intake (`providers/gitlab.ts` `apply`) is unchanged.
+
+### Fixed
+
+- **Presets drop removed delegation keys.** DSH 0.2.1-alpha.x removed `backgroundMode` from dsh-tool-subagent and the loop built-in cwd prompt variable; the reviewer/auditor/coder presets state neither, and the working-directory service supplies the directory instead.
 
 ## [0.11.2] - 2026-10-06
 
