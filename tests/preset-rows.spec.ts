@@ -52,11 +52,13 @@ describe.each(PRESET_DIRS)('%s persona row', (dir) => {
     expect(header.length).toBeGreaterThan(0)
   })
 
-  // An omitted suffix is not neutral: `dsh-persona` always registers
-  // `deployment:persona-suffix`, so an empty one shadows the deployment's
-  // working-directory line away for every session on this preset.
-  it('restates the deployment working-directory suffix', () => {
-    expect(block).toMatch(/^\s+suffix: Your working directory is \{\{cwd\}\}\.$/m)
+  // DSH 0.2.1-alpha.x removed the loop's built-in cwd prompt variable:
+  // an unresolved reference fails before a model request. The persona states
+  // no directory clause; the working-directory service supplies the
+  // execution directory as required user context instead.
+  it('states no working-directory suffix reference', () => {
+    expect(block).not.toMatch(/\{\{cwd\}\}/)
+    expect(block).not.toMatch(/^\s+suffix:/m)
   })
 })
 
@@ -113,12 +115,14 @@ describe.each(['maestro-reviewer', 'maestro-auditor'])('%s delegation rows', (di
   it.each([
     ['tool-subagent-codex', 'codex', 'subagent_codex'],
     ['tool-subagent-claude-code', 'claude-code', 'subagent_claude_code'],
-  ])('routes %s to its provider as a one-shot child', (id, provider, toolName) => {
+  ])('routes %s to its provider as a managed-activation child', (id, provider, toolName) => {
     const block = rowBlock(yml, id)
     expect(block).toMatch(/^\s+name: '@deepseek-ai\/dsh-tool-subagent'$/m)
     expect(block).toMatch(new RegExp(`^\\s+provider: ${provider}$`, 'm'))
     expect(block).toMatch(new RegExp(`^\\s+toolName: ${toolName}$`, 'm'))
-    expect(block).toMatch(/^\s+backgroundMode: one-shot$/m)
+    // DSH 0.2.1-alpha.x removed `backgroundMode` from dsh-tool-subagent:
+    // every delegation is a managed activation now.
+    expect(block).not.toMatch(/^\s+backgroundMode:/m)
     expect(block).toMatch(/^\s+maxDepth: provider-managed$/m)
   })
 })
