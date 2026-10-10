@@ -32,7 +32,7 @@ Host code lives in `src/host/` (flat `rootDir`, emits `lib/index.js`):
 - Review-run tools mounted by the orchestrator: `search-tool.ts`, `hyva-theme-inspect-tool.ts`, `hyva-csp-scan-tool.ts`, `layout-xml-tool.ts`, `module-check-tool.ts`, `phtml-escape-scan-tool.ts`, `scope-split-tool.ts`, `perf-log-stats-tool.ts`.
 - `augment.d.ts` / `dsh-skill.d.ts`: ambient type declarations.
 - `src/client/`: settings section (`index.tsx`, `review/ReviewSettings.tsx`, `review/styles.ts`, brand mark and nav icon); `scripts/build-client.mjs` bundles it into `lib/client.js` as part of `pnpm build`.
-- `presets/`: agent presets (`maestro-reviewer`, `maestro-auditor` as bundle patch rows, `maestro-coder` as a directory preset); `skills/dsh-native-tools/`: the capability to tool and CLI command map.
+- `presets/`: agent presets (`maestro-reviewer`, `maestro-auditor` as bundle patch rows; `maestro-coder` as a directory preset — legacy, no patch row ships it since nothing in-tree loads directory presets; convert to a patch row before relying on it); `skills/dsh-native-tools/`: the capability to tool and CLI command map.
 - `profiles/reviewer-ci/` — headless DSH profile for the CI image (settings-rpc disabled: no web connection in CI).
 - `docker/` — reviewer image (`Dockerfile`, `entrypoint.sh`, `ci-settings.*.yaml` model variants).
 - `templates/` — `reviewer-project.gitlab-ci.yml` (secrets holder) + `source-project.gitlab-ci.yml` (bridge).
@@ -165,7 +165,7 @@ batch.
    - `pnpm verify && pnpm test && pnpm build` clean, then PR → CI green →
      **human `APPROVED`** → squash-merge.
 2. **Tag + publish** (guarded — present the exact commands and get explicit
-   approval before running, per the git-protection rule below):
+   approval before running, per the Guard git-protection rule in the workspace root AGENTS.md):
    ```sh
    git -C <repo> tag vX.Y.Z
    git -C <repo> push origin vX.Y.Z
