@@ -1,4 +1,6 @@
-import type { ModelSelection } from '@deepseek-ai/dsh-agent'
+import type { EngineRunOptions } from '@ddtcorex/maestro-reviewer/lib/engine.js'
+
+type ModelSelection = EngineRunOptions['model']
 
 declare module '@deepseek-ai/dsh-host-webserver' {}
 declare module '@deepseek-ai/dsh-client-ui-slots' {}

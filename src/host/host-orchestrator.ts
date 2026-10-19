@@ -4,15 +4,16 @@ import { promisify } from 'node:util'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
-import type { ModelSelection } from '@deepseek-ai/dsh-agent'
 import type { ReviewRequest, ReviewResult } from '@ddtcorex/maestro-reviewer/lib/events.js'
 import type { ReviewSkillProfile } from '@ddtcorex/maestro-reviewer/lib/skills-tool.js'
 import { govardOnPath } from '@ddtcorex/maestro-reviewer/lib/govard-lint-detection.js'
 import { hasCompletedReview, pruneHistory, recordReviewFinish, recordReviewStart } from '@ddtcorex/maestro-reviewer/lib/review-history.js'
 import { gitlabForge } from '@ddtcorex/maestro-reviewer/lib/forge/gitlab/index.js'
 import { assertSafeBranchName, declineUnmappedDeepReview, isBranchNotFoundError, type ReviewCommentDeps } from '@ddtcorex/maestro-reviewer/lib/orchestrator.js'
-import { DEDUPED_SUMMARY, removeWorktree, writeFailedReport, type CodeAccess, type EngineGitlab } from '@ddtcorex/maestro-reviewer/lib/engine.js'
+import { DEDUPED_SUMMARY, removeWorktree, toModelSelection, writeFailedReport, type CodeAccess, type EngineGitlab, type EngineRunOptions } from '@ddtcorex/maestro-reviewer/lib/engine.js'
+
+/** The engine's model selection type (its own dsh-agent copy). */
+type ModelSelection = EngineRunOptions['model']
 import { loadUserConfig, type MaestroUserConfig, type ProjectMapping, type ReviewModelSelection } from './config-store.js'
 import { reviewDigestText, type NotifierLike } from './notify.js'
 import './events.js'
@@ -43,11 +44,7 @@ export function resolveReviewModel(
 ): ModelSelection {
   const raw = (mapping?.reviewModel as ReviewModelSelection | null | undefined) ?? userConfig.reviewModel ?? rowSelection
   if (raw === undefined || raw === null) return fallback
-  return {
-    provider: raw.provider,
-    model: raw.model,
-    ...(raw.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(raw.reasoningEffort) }),
-  }
+  return toModelSelection(raw)
 }
 
 /** Effective auto-trigger flags: per-project row overrides global, unset inherits (design §4). */
