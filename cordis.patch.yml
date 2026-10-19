@@ -3,6 +3,11 @@
 # @ddtcorex/maestro-reviewer bundle, which the profile lists too.
 # RPC channel: /dsh-maestro-review (see src/host/settings-rpc.ts)
 - insert:
+    # The package root. DSH serves a package's dsh.client bundle (the Settings
+    # section) only when a row names the bare package; subpath rows below do
+    # not register it. apply() itself registers nothing.
+    - id: maestro-review-plugin
+      name: '@ddtcorex/dsh-maestro-review'
     # GitLab webhook intake on the raw webserver (/hooks/gitlab-mr*).
     - id: maestro-review-webhook
       name: '@ddtcorex/dsh-maestro-review/lib/providers/gitlab.js'
