@@ -64,6 +64,11 @@ The engine is a `workspace:^` dependency on the sibling checkout
   install fail with `ERR_PNPM_OUTDATED_LOCKFILE`: regenerate the lockfile here
   (`pnpm install` with the engine checkout on that `master`) and commit it.
 
+- `prepublishOnly` (`scripts/check-engine-version.mjs`) refuses an engine older
+  than this plugin's minor, and it also runs in CI's publish dry-run: a plugin
+  PR at 0.14 stays red until the engine's `master` carries 0.14.0. Merge the
+  engine release first.
+
 ## Release checklist
 
 1. The engine release (`@ddtcorex/maestro-reviewer`) is published first: this

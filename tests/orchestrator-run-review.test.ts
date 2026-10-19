@@ -1,6 +1,21 @@
 import { describe, it, expect, vi } from 'vitest'
 
-vi.mock('../src/host/config-store.js', () => ({ loadUserConfig: async () => ({}) }))
+vi.mock('../src/host/config-store.js', () => ({ loadUserConfig: vi.fn(async () => ({})) }))
+// Hermetic: no GitLab request and no report written under the real home.
+vi.mock('@ddtcorex/maestro-reviewer/lib/engine.js', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('@ddtcorex/maestro-reviewer/lib/engine.js')>()
+  return { ...mod, writeFailedReport: vi.fn(async () => {}) }
+})
+const forge = {
+  mrHeadSha: vi.fn(async () => undefined), mrBaseSha: vi.fn(async () => undefined), compare: vi.fn(async () => undefined),
+  postNote: vi.fn(async () => {}), replyToDiscussion: vi.fn(async () => {}), postFindings: vi.fn(async () => {}),
+  signals: vi.fn(() => ({ start: async () => {}, finish: async () => {} })), mountAgentTools: vi.fn(async () => {}),
+}
+vi.mock('@ddtcorex/maestro-reviewer/lib/forge/gitlab/index.js', () => ({ gitlabForge: vi.fn(() => forge) }))
+vi.mock('../src/host/notify.js', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../src/host/notify.js')>()
+  return { ...mod, reviewDigestText: vi.fn(() => 'digest') }
+})
 vi.mock('@ddtcorex/maestro-reviewer/lib/ci-clone.js', () => ({
   cloneSourceRepo: vi.fn(async (opts: any) => opts.dir),
   defaultRun: vi.fn(async () => {}),
@@ -101,10 +116,30 @@ describe('host access decision', () => {
   })
 
   it('an unmapped deep request is declined without running the engine', async () => {
+    const { writeFailedReport } = await import('@ddtcorex/maestro-reviewer/lib/engine.js')
+    vi.mocked(writeFailedReport).mockClear(); forge.postNote.mockClear()
     const { run, runReview } = await host()
     const r = await runReview(mr({ mode: 'deep', mrIid: 77 }))
     expect(run).not.toHaveBeenCalled()
     expect(r.summary).toMatch(/declined/)
+    expect(forge.postNote).toHaveBeenCalledTimes(1)
+    expect(String(forge.postNote.mock.calls[0][0])).toMatch(/Not started/)
+    expect(writeFailedReport).not.toHaveBeenCalled()
+  })
+
+  it('the Telegram digest carries the duration the engine measured', async () => {
+    const { loadUserConfig } = await import('../src/host/config-store.js')
+    const { reviewDigestText } = await import('../src/host/notify.js')
+    vi.mocked(loadUserConfig).mockResolvedValueOnce({ telegramReviewNotifications: true } as any)
+    const send = vi.fn(async () => ({ sent: true }))
+    const run = vi.fn(async (_p: unknown, opts: any) => { opts.notify('completed', 'ok', 1234); return { ok: true, summary: 'ok', failures: [], durationMs: 1 } })
+    let runReview: ((payload: any) => Promise<any>) | undefined
+    const { apply } = await import('../src/host/host-orchestrator.js')
+    apply({ on: () => {}, provide: (n: string, fn: any) => { if (n === 'reviewRunner') runReview = fn }, reviewEngine: { run }, get: (n: string) => n === 'maestroNotifier' ? { send } : undefined } as any,
+      { projectMappings: [], gitlabBaseUrl: 'https://gitlab.example.com', botUsername: 'b', agentTimeoutMs: 1000, gitlabToken: 't' })
+    await runReview!(mr())
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(reviewDigestText).mock.calls.at(-1)?.[0]).toMatchObject({ status: 'completed', summary: 'ok', durationMs: 1234 })
   })
 })
 

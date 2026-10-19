@@ -350,7 +350,7 @@ export function apply(ctx: Context, config: Config): void {
       const model = resolveReviewModel(userConfig, mapping, fallbackSelection, config.reviewModel)
       // Opt-in Telegram digest; a delivery failure is logged and dropped.
       const reviewStartMsOuter = Date.now()
-      const notifyTelegram = (status: 'completed' | 'failed', summary?: string): void => {
+      const notifyTelegram = (status: 'completed' | 'failed', summary?: string, durationMs?: number): void => {
         if (userConfig.telegramReviewNotifications !== true) return
         const notifier = ctx.get?.('maestroNotifier') as NotifierLike | undefined
         if (notifier === undefined) return
@@ -366,7 +366,8 @@ export function apply(ctx: Context, config: Config): void {
               mode: payload.mode,
               profile: mapping?.reviewProfile,
               gitlabBaseUrl: gitlab.baseUrl,
-              durationMs: Date.now() - reviewStartMsOuter,
+              // The engine measures from the MR signals start; the decline has no engine run.
+              durationMs: durationMs ?? Date.now() - reviewStartMsOuter,
             }),
           },
         ).then((result) => {
