@@ -1,0 +1,21 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    uses: ddtcorex/maestro-ci/.github/workflows/node-release.yml@e2448b1e7c167c6d969c8d369fef1bc2a8f0271a
+    with:
+      pnpm-version: ""
+      # The engine release must be published first; its master carries it.
+      sibling-repos: |
+        maestro-reviewer master ../maestro-reviewer
+    secrets:
+      npm-token: ${{ secrets.NPM_TOKEN }}

@@ -1,0 +1,4 @@
+# dsh-maestro-review bundle patch: the DSH host rows of Maestro Review.
+- insert:
+    - id: maestro-review-plugin
+      name: '@ddtcorex/dsh-maestro-review'

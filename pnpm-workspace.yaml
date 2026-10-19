@@ -1,0 +1,12 @@
+allowBuilds:
+  esbuild: true
+# The engine is a sibling checkout (CI clones it beside this one), so the
+# workspace:^ dependency resolves locally without a registry round trip.
+packages:
+  - .
+  - ../../maestro-reviewer
+# Day-zero DSH prereleases: pnpm's 24h age gate rejects a release published
+# hours ago, and the gate is re-checked on every pnpm command.
+minimumReleaseAge: 0
+overrides:
+  '@deepseek-ai/dsh-invariants': 0.1.7-rc.1

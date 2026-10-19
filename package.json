@@ -1,0 +1,55 @@
+{
+  "name": "@ddtcorex/dsh-maestro-review",
+  "version": "0.14.0",
+  "private": false,
+  "packageManager": "pnpm@11.7.0",
+  "description": "Maestro Review for the DeepSeek Harness: GitLab webhook intake, project mappings with local worktrees, the Settings section and Telegram digests, on top of the maestro-reviewer engine",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ddtcorex/dsh-maestro-review.git"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": "./lib/index.js",
+    "./lib/*": "./lib/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "src",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "verify": "tsc -p tsconfig.json --noEmit",
+    "test": "NODE_ENV=test vitest run"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.0.4",
+    "@deepseek-ai/dsh-client-connection": "^0.1.0-rc.6 || >=0.1.1-rc.0 <0.3.0-0"
+  },
+  "dependencies": {
+    "@ddtcorex/maestro-reviewer": "workspace:^",
+    "@deepseek-ai/schemastery": "~3.18.4"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "~4.0.4",
+    "@deepseek-ai/dsh-client-connection": "0.2.0-rc.2",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.4",
+    "yaml": "^2.9.0"
+  }
+}
