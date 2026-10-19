@@ -53,6 +53,17 @@ The engine is a `workspace:^` dependency on the sibling checkout
 - Conventional commits, imperative mood.
 - Never merge or release without an explicit human approval.
 
+## Merge order and the lockfile
+
+`pnpm-lock.yaml` records the engine checkout as the importer
+`../../maestro-reviewer`, and CI clones the engine's `master` there. So:
+
+- A plugin PR that needs an engine change goes green only after that engine
+  change is merged; merge the engine first, then re-run the plugin CI.
+- Any dependency change on the engine's `master` makes this package's frozen
+  install fail with `ERR_PNPM_OUTDATED_LOCKFILE`: regenerate the lockfile here
+  (`pnpm install` with the engine checkout on that `master`) and commit it.
+
 ## Release checklist
 
 1. The engine release (`@ddtcorex/maestro-reviewer`) is published first: this

@@ -43,9 +43,13 @@ describe('resolveReviewTriggers', () => {
 
 describe('runReview trigger gates (silent skip)', () => {
   const handlers: Record<string, (p: any) => void> = {}
+  // A real engine stand-in: without it a gate that fails open would throw
+  // inside runReview and the silence assertions would pass vacuously.
+  const run = vi.fn(async () => ({ ok: true, summary: 'done', failures: [], durationMs: 1 }))
   const ctx = {
     on: (ev: string, fn: (p: any) => void): void => { handlers[ev] = fn },
     provide: (): void => {},
+    reviewEngine: { run },
   }
   const flush = async (): Promise<void> => {
     await new Promise((r) => setTimeout(r, 50))
@@ -69,6 +73,7 @@ describe('runReview trigger gates (silent skip)', () => {
     await flush()
     expect(recordReviewStart).not.toHaveBeenCalled()
     expect(fetchSpy).not.toHaveBeenCalled()
+    expect(run).not.toHaveBeenCalled()
     fetchSpy.mockRestore()
   })
 
@@ -82,6 +87,30 @@ describe('runReview trigger gates (silent skip)', () => {
     await flush()
     expect(recordReviewStart).not.toHaveBeenCalled()
     expect(fetchSpy).not.toHaveBeenCalled()
+    expect(run).not.toHaveBeenCalled()
     fetchSpy.mockRestore()
+  })
+
+  it('push with onPush=true but no completed review in history stays silent', async () => {
+    vi.mocked(hasCompletedReview).mockResolvedValue(false)
+    vi.mocked(loadUserConfig).mockResolvedValue({
+      gitlabBaseUrl: 'https://g', gitlabToken: 't', botUsername: 'b',
+      projectMappings: [{ projectPath: 'g/p', localRepoPath: '/x', rereviewOnPush: true }],
+    })
+    handlers['maestro/review-request']({ ...base, trigger: 'push' })
+    await flush()
+    expect(hasCompletedReview).toHaveBeenCalledWith(1, 2)
+    expect(run).not.toHaveBeenCalled()
+  })
+
+  it('the same requests run the engine once their gate is open (the silence above is real)', async () => {
+    vi.mocked(loadUserConfig).mockResolvedValue({
+      gitlabBaseUrl: 'https://g', gitlabToken: 't', botUsername: 'b',
+      projectMappings: [{ projectPath: 'g/p', localRepoPath: '/x', reviewOnAssign: true, rereviewOnPush: true }],
+    })
+    handlers['maestro/review-request']({ ...base, trigger: 'reviewer-assignment' })
+    handlers['maestro/review-request']({ ...base, trigger: 'push' })
+    await flush()
+    expect(run).toHaveBeenCalledTimes(2)
   })
 })
