@@ -1,4 +1,35 @@
-# dsh-maestro-review bundle patch: the DSH host rows of Maestro Review.
+# dsh-maestro-review bundle patch: the DSH host rows of Maestro Review. The
+# engine rows (maestro-review-host, maestro-review-engine) come from the
+# @ddtcorex/maestro-reviewer bundle, which the profile lists too.
+# RPC channel: /dsh-maestro-review (see src/host/settings-rpc.ts)
 - insert:
-    - id: maestro-review-plugin
-      name: '@ddtcorex/dsh-maestro-review'
+    # GitLab webhook intake on the raw webserver (/hooks/gitlab-mr*).
+    - id: maestro-review-webhook
+      name: '@ddtcorex/dsh-maestro-review/lib/providers/gitlab.js'
+      config:
+        secret: !!js process.env.MAESTRO_GITLAB_WEBHOOK_SECRET
+        botUsername: maestro-bot
+    # Settings, mappings, trigger gates and worktrees, then the engine.
+    - id: maestro-review-host-orchestrator
+      name: '@ddtcorex/dsh-maestro-review/lib/host-orchestrator.js'
+      inject: ['reviewEngine', 'agentDefaultModel']
+      config:
+        gitlabBaseUrl: https://gitlab.example.com
+        gitlabToken: !!js process.env.MAESTRO_GITLAB_TOKEN
+        botUsername: maestro-bot
+        projectMappings: []
+    - id: maestro-review-settings-rpc
+      name: '@ddtcorex/dsh-maestro-review/lib/settings-rpc.js'
+      # rpc.handle registers a webServer route inside an effect fiber which carries only the row's inject (not the module's);
+      # on DSH 0.2.x that is not sufficient on its own, see the `connection` entry at the end of this file.
+      inject: ['connection', 'webServer']
+
+# DSH 0.2.x resolves `webServer` for `ctx.connection.rpc.handle` on the
+# `connection` row own fiber, so a row-level inject cannot reach it. `inject`
+# replaces the base list, hence `webStartup` (the base row needs it for
+# trustedHosts) is repeated. Identical in every maestro package that registers
+# RPC channels, so each one stays installable alone.
+- id: connection
+  inject:
+    - webStartup
+    - webServer
