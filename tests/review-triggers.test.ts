@@ -7,6 +7,8 @@ vi.mock('../src/host/config-store.ts', async (importOriginal) => {
   const orig = await importOriginal<typeof import('../src/host/config-store.ts')>()
   return { ...orig, loadUserConfig: vi.fn() }
 })
+// Hermetic: the repository settings read never reaches the network.
+vi.mock('@ddtcorex/maestro-reviewer/lib/ci-repo-settings.js', () => ({ loadRepoSettings: vi.fn(async () => ({ file: {}, warnings: [] })) }))
 vi.mock('@ddtcorex/maestro-reviewer/lib/review-history.js', async (importOriginal) => {
   const orig = await importOriginal<typeof import('@ddtcorex/maestro-reviewer/lib/review-history.js')>()
   return {
