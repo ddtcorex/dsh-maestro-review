@@ -7,7 +7,9 @@ const manifest = JSON.parse(readFileSync('package.json', 'utf-8')) as Record<str
 describe('package identity', () => {
   it('is the DSH host plugin for Maestro review, starting above the last published 0.12.1', () => {
     expect(manifest.name).toBe('@ddtcorex/dsh-maestro-review')
-    expect(manifest.version).toBe('0.14.0')
+    // Never a literal: a release-alignment test that pins a version breaks on the next tag.
+    const [maj, min, pat] = String(manifest.version).split('.').map(Number)
+    expect(maj > 0 || min > 12 || (min === 12 && pat > 1)).toBe(true)
     expect(manifest.private).toBe(false)
     expect(manifest.repository.url).toBe('git+https://github.com/ddtcorex/dsh-maestro-review.git')
   })

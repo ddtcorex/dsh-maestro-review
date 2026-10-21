@@ -1,6 +1,6 @@
 {
   "name": "@ddtcorex/dsh-maestro-review",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "private": false,
   "packageManager": "pnpm@11.7.0",
   "description": "Maestro Review for the DeepSeek Harness: GitLab webhook intake, project mappings with local worktrees, the Settings section and Telegram digests, on top of the maestro-reviewer engine",
