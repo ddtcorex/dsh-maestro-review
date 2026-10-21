@@ -477,18 +477,16 @@ export function apply(ctx: Context, config: Config): void {
       })
       const rereview = pending.find((c) => c.command.kind === 'rereview')
       if (rereview !== undefined && rereview.command.kind === 'rereview') {
-        // As in CI: a path-limited rereview needs a full review of this head to carry
-        // (its severities stay in the gate and the metadata), else the whole MR is reviewed.
-        const asked = rereview.command.path
-        const [head, prior] = asked === undefined ? [undefined, undefined] : await Promise.all([
+        // Unlike CI, a host review carries no head SHA, so it posts no metadata and no
+        // gate reads it: the rereview stays limited to its path. A full review of the
+        // current head (a CI one) still has its findings carried into this one.
+        const path = rereview.command.path
+        const [head, prior] = path === undefined ? [undefined, undefined] : await Promise.all([
           gitlabForge(gitlab, request).mrHeadSha().catch(() => undefined),
           latestCompletedReview(fetcher, { ...target, botUserId }).catch(() => undefined),
         ])
         const carry = head !== undefined && prior?.headSha === head ? prior.findings : undefined
-        const path = carry !== undefined ? asked : undefined
-        const result = path !== undefined && carry !== undefined
-          ? await runReview({ ...request, pathPrefix: path }, { carryFindings: carry })
-          : await runReview(request)
+        const result = await runReview({ ...request, ...(path !== undefined ? { pathPrefix: path } : {}) }, carry !== undefined ? { carryFindings: carry } : {})
         const note = result.ok ? `Re-reviewed ${path === undefined ? 'the whole MR' : `\`${path}\``}; see the review comment.` : `The re-review failed: ${result.failures[0] ?? 'unknown error'}`
         await reply(rereview.discussionId, `${note}\n\n${commandMarker(rereview.noteId)}`)
       }

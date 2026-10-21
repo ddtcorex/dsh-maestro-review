@@ -107,13 +107,14 @@ describe('host commands', () => {
 })
 
 describe('host command safety', () => {
-  it('reviews the whole MR when no full review of this head exists to carry (I2)', async () => {
+  it('keeps a path rereview limited without a full review of this head to carry (host reviews post no metadata, so no gate reads them)', async () => {
     pending.mockResolvedValueOnce([{ noteId: 9, discussionId: 'd5', command: { kind: 'rereview', path: 'app/' } }])
     latest.mockResolvedValueOnce({ headSha: 'older', findings: [] })
     const { provided, run } = await host()
     await provided.reviewCommandRunner({ projectId: 1, projectPath: 'group/proj', mrIid: 2, sourceBranch: 'feat/x' })
-    expect((run.mock.calls[0] as any[])[0]).not.toHaveProperty('pathPrefix')
-    expect((run.mock.calls[0] as any[])[1].carryFindings).toBeUndefined()
+    expect((run.mock.calls[0] as any[])[0]).toMatchObject({ pathPrefix: 'app/' })
+    expect((run.mock.calls[0] as any[])[0]).not.toHaveProperty('headSha')
+    expect((run.mock.calls[0] as any[])[1]).not.toHaveProperty('carryFindings')
   })
 
   it('runs one command pass per MR at a time, with one trailing pass for notes that came meanwhile (I1)', async () => {
