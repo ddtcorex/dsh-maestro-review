@@ -1,4 +1,5 @@
 import type { MrOpenedPayload, ReviewMode, ReviewRequest, ReviewScope } from '@ddtcorex/maestro-reviewer/lib/events.js'
+import { parseCommand } from '@ddtcorex/maestro-reviewer/lib/commands.js'
 
 type JsonRecord = Record<string, unknown>
 
@@ -122,4 +123,22 @@ export function routeGitlabReviewRequest(body: unknown, botUsername: string, opt
   const note = attributes.note
   const mode: ReviewMode = /(?:^|\s)\/maestro\s+deep(?:\s|$)/i.test(note) || /\bdeep\s+review\b/i.test(note) ? 'deep' : 'quick'
   return { ...payload, trigger: 'mention', mode, scope }
+}
+
+/**
+ * A note whose first line is `/maestro explain|fix|rereview` (no mention
+ * needed): the MR to answer commands on. The engine then reads every pending
+ * command of the MR from GitLab and checks each author's access, so this only
+ * routes. The bot's own notes never count.
+ */
+export function routeGitlabCommand(body: unknown, botUsername: string): MrOpenedPayload | undefined {
+  const value = record(body)
+  if (value === undefined || value.object_kind !== 'note' || botUsername.trim() === '') return undefined
+  const user = record(value.user)
+  if (typeof user?.username === 'string' && user.username.toLowerCase() === botUsername.toLowerCase()) return undefined
+  const attributes = record(value.object_attributes)
+  if (attributes === undefined || typeof attributes.note !== 'string') return undefined
+  const command = parseCommand(attributes.note)
+  if (command === undefined || command.kind === 'dismiss') return undefined
+  return mrPayload(value)
 }

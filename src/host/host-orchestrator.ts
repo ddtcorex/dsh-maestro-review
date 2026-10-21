@@ -16,6 +16,12 @@ import { DEDUPED_SUMMARY, removeWorktree, toModelSelection, writeFailedReport, t
 type ModelSelection = EngineRunOptions['model']
 import { loadUserConfig, type MaestroUserConfig, type ProjectMapping, type ReviewModelSelection } from './config-store.js'
 import { reviewDigestText, type NotifierLike } from './notify.js'
+import { loadRepoSettings } from '@ddtcorex/maestro-reviewer/lib/ci-repo-settings.js'
+import { effectiveConfig } from '@ddtcorex/maestro-reviewer/lib/repo-config.js'
+import { answerCommands, commandMarker, findPendingCommands, replyToCommand } from '@ddtcorex/maestro-reviewer/lib/ci-commands.js'
+import { fetchBotUserId, latestCompletedReview } from '@ddtcorex/maestro-reviewer/lib/ci-coexist.js'
+import { timedFetcher } from '@ddtcorex/maestro-reviewer/lib/forge/gitlab/gitlab-client.js'
+import type { MrOpenedPayload } from '@ddtcorex/maestro-reviewer/lib/events.js'
 import './events.js'
 
 /**
@@ -293,7 +299,7 @@ export async function writeContainerVendorOverride(localRepoPath: string, worktr
 }
 
 export function apply(ctx: Context, config: Config): void {
-  async function runReview(payload: ReviewRequest): Promise<ReviewResult> {
+  async function runReview(payload: ReviewRequest, more: Partial<EngineRunOptions> = {}): Promise<ReviewResult> {
     const t0 = Date.now()
     try {
       const userConfig = await loadUserConfig()
@@ -401,7 +407,16 @@ export function apply(ctx: Context, config: Config): void {
       } else {
         access = { kind: 'diff' }
       }
-      return await ctx.reviewEngine.run(payload, { gitlab, access, reviewProfile, model, agentTimeoutMs, notify: notifyTelegram })
+      // The project's .maestro-review.yml (default branch): ignore globs, rules, minimum severity,
+      // language; fan-out only when the file asks for it (the host keeps one reviewer otherwise).
+      const { file, warnings } = await loadRepoSettings(timedFetcher(fetch), { baseUrl: gitlab.baseUrl, token: gitlab.token, projectId: payload.projectId })
+      const eff = effectiveConfig({ ignoreGlobs: [], fanout: {} }, file)
+      const repo = { rules: eff.rules, warnings, ...(eff.minSeverity !== undefined ? { minSeverity: eff.minSeverity } : {}), ...(eff.language !== undefined ? { language: eff.language } : {}) }
+      return await ctx.reviewEngine.run(payload, {
+        gitlab, access, reviewProfile, model, agentTimeoutMs, notify: notifyTelegram,
+        ignoreGlobs: eff.ignoreGlobs, repo, ...(eff.fanout !== undefined ? { fanout: eff.fanout } : {}),
+        ...more,
+      })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       console.error(`maestro-orchestrator: review run failed for MR !${String(payload.mrIid)}:`, err)
@@ -409,8 +424,81 @@ export function apply(ctx: Context, config: Config): void {
     }
   }
 
+  /**
+   * Answers the MR's pending /maestro commands with the engine's helpers (the
+   * same access rules and answer markers as CI); a rereview runs a review
+   * limited to its path. Failures are logged, never thrown.
+   */
+  /** Per MR: whether a command pass is running, and whether notes arrived during it. */
+  const commandPasses = new Map<string, { again: boolean }>()
+
+  /**
+   * One command pass per MR at a time: two notes landing together would
+   * otherwise both read the same pending command and answer it twice. Notes
+   * that arrive during a pass get exactly one trailing pass.
+   */
+  async function runCommands(mr: MrOpenedPayload): Promise<void> {
+    const key = `${mr.projectId}!${mr.mrIid}`
+    const running = commandPasses.get(key)
+    if (running !== undefined) { running.again = true; return }
+    const state = { again: false }
+    commandPasses.set(key, state)
+    try {
+      do {
+        state.again = false
+        await commandPass(mr)
+      } while (state.again)
+    } finally {
+      commandPasses.delete(key)
+    }
+  }
+
+  async function commandPass(mr: MrOpenedPayload): Promise<void> {
+    try {
+      const userConfig = await loadUserConfig()
+      const token = userConfig.gitlabToken ?? config.gitlabToken
+      if (token === undefined) { console.error(`maestro-orchestrator: drop command, no GitLab token for ${mr.projectPath}`); return }
+      const gitlab = { baseUrl: userConfig.gitlabBaseUrl ?? config.gitlabBaseUrl, token, botUsername: userConfig.botUsername ?? config.botUsername }
+      const mapping = (userConfig.projectMappings ?? config.projectMappings).find(m => m.projectPath === mr.projectPath)
+      const fallbackSelection: ModelSelection = (ctx.get?.('agentDefaultModel') as { currentSelection(): ModelSelection } | undefined)?.currentSelection()
+        ?? { provider: 'fallback', model: 'fallback' }
+      const model = resolveReviewModel(userConfig, mapping, fallbackSelection, config.reviewModel)
+      const agentTimeoutMs = typeof userConfig.agentTimeoutMs === 'number' && userConfig.agentTimeoutMs >= 1000 ? userConfig.agentTimeoutMs : config.agentTimeoutMs
+      const fetcher = timedFetcher(fetch)
+      const target = { baseUrl: gitlab.baseUrl, token: gitlab.token, projectId: mr.projectId, mrIid: mr.mrIid }
+      const botUserId = await fetchBotUserId(fetcher, gitlab.baseUrl, gitlab.token)
+      const pending = await findPendingCommands(fetcher, { ...target, botUserId })
+      const request: ReviewRequest = { ...mr, trigger: 'mention', mode: 'quick', scope: { kind: 'mr' } }
+      const options = { gitlab, access: { kind: 'diff' } as CodeAccess, model, agentTimeoutMs }
+      const reply = (discussionId: string, body: string) => replyToCommand(fetcher, target, discussionId, body)
+      await answerCommands(pending, {
+        answer: (prompt) => ctx.reviewEngine.answer !== undefined ? ctx.reviewEngine.answer(request, options, prompt) : Promise.reject(new Error('this engine cannot answer commands')),
+        reply,
+      })
+      const rereview = pending.find((c) => c.command.kind === 'rereview')
+      if (rereview !== undefined && rereview.command.kind === 'rereview') {
+        // Unlike CI, a host review carries no head SHA, so it posts no metadata and no
+        // gate reads it: the rereview stays limited to its path. A full review of the
+        // current head (a CI one) still has its findings carried into this one.
+        const path = rereview.command.path
+        const [head, prior] = path === undefined ? [undefined, undefined] : await Promise.all([
+          gitlabForge(gitlab, request).mrHeadSha().catch(() => undefined),
+          latestCompletedReview(fetcher, { ...target, botUserId }).catch(() => undefined),
+        ])
+        const carry = head !== undefined && prior?.headSha === head ? prior.findings : undefined
+        const result = await runReview({ ...request, ...(path !== undefined ? { pathPrefix: path } : {}) }, carry !== undefined ? { carryFindings: carry } : {})
+        const note = result.ok ? `Re-reviewed ${path === undefined ? 'the whole MR' : `\`${path}\``}; see the review comment.` : `The re-review failed: ${result.failures[0] ?? 'unknown error'}`
+        await reply(rereview.discussionId, `${note}\n\n${commandMarker(rereview.noteId)}`)
+      }
+    } catch (err) {
+      console.error(`maestro-orchestrator: MR commands on ${mr.projectPath} !${mr.mrIid} failed:`, err instanceof Error ? err.message : err)
+    }
+  }
+
   ctx.on('maestro/review-request', (payload) => { void runReview(payload) })
+  ctx.on('maestro/review-command', (payload) => { void runCommands(payload) })
   ctx.provide('reviewRunner', runReview)
+  ctx.provide('reviewCommandRunner', runCommands)
 }
 
 /** Host-only: a deep request on an unmapped project gets a "not started" note, recorded like a run. */

@@ -11,14 +11,20 @@ which also carries the GitLab CI flow.
 - **Webhook intake** (row `maestro-review-webhook`): `/hooks/gitlab-mr` on the
   raw DSH webserver, authenticated by `X-Gitlab-Token`. An `@<bot>` mention
   asks for a quick review, `/maestro deep` or "deep review" for a deep one;
-  reviewer assignment and pushes trigger reviews when enabled.
+  reviewer assignment and pushes trigger reviews when enabled. A note whose
+  first line is `/maestro explain`, `/maestro fix` (in a finding thread) or
+  `/maestro rereview [path]` is answered right away, with the engine's access
+  rules (Developer or above) and answer markers, the same as in CI.
 - **Host orchestrator** (row `maestro-review-host-orchestrator`): reads the
   settings, applies the trigger gates, prunes history, and calls the engine's
   `reviewEngine` service. A mapped project is reviewed on a worktree of its
   local checkout (vendor and `app/etc/env.php` linked, a per-MR govard
   environment for the deep auditor, torn down afterwards); a missing branch
   falls back to a diff-only review. An unmapped project gets a diff-only
-  review on mention and a "Not started" note for deep.
+  review on mention and a "Not started" note for deep. Every review reads the
+  project's `.maestro-review.yml` from its default branch (ignore globs,
+  rules, minimum severity, language; fan-out only when the file sets it), and
+  a worktree is redacted unless the runtime auditor runs on it.
 - **Settings** (row `maestro-review-settings-rpc`, channel
   `/dsh-maestro-review`, Settings section `maestro-review`): GitLab URL,
   token, bot username, webhook secret, project mappings, trigger defaults,

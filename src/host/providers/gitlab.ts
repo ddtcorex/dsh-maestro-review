@@ -4,7 +4,7 @@ import z from '@deepseek-ai/schemastery'
 import { loadUserConfig } from '../config-store.js'
 import { secretsMatch } from '../secure-compare.js'
 import type { MrOpenedPayload, ReviewRequest as OrchestratorReviewRequest } from '@ddtcorex/maestro-reviewer/lib/events.js'
-import { describeDrop, routeGitlabReviewRequest } from '../review-intake.js'
+import { describeDrop, routeGitlabCommand, routeGitlabReviewRequest } from '../review-intake.js'
 
 export const name = 'maestro-review-webhook'
 export const inject = ['webServer'] as const
@@ -96,6 +96,12 @@ export function apply(ctx: Context, config: Config): void {
         if ((body.object_kind === 'merge_request' || body.object_kind === 'note') && !hasValidGitlabMrIdentity(body)) {
           console.error(`maestro-review-webhook: drop invalid-identity object_kind=${(body as { object_kind?: unknown }).object_kind ?? 'unknown'}`)
           res.writeHead(400).end(); return
+        }
+        // A /maestro command note: answered by the command runner, never routed as a mention too.
+        const command = routeGitlabCommand(body, botUsername)
+        if (command !== undefined) {
+          ctx.emit('maestro/review-command', command)
+          res.writeHead(200).end(); return
         }
         // The orchestrator is the sole push gate (resolveReviewTriggers);
         // intake always emits so per-project overrides keep working.

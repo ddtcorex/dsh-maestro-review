@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 
 vi.mock('../src/host/config-store.js', () => ({ loadUserConfig: vi.fn(async () => ({})) }))
+// Hermetic: the repository settings read never reaches the network.
+vi.mock('@ddtcorex/maestro-reviewer/lib/ci-repo-settings.js', () => ({ loadRepoSettings: vi.fn(async () => ({ file: {}, warnings: [] })) }))
 // Hermetic: no GitLab request and no report written under the real home.
 vi.mock('@ddtcorex/maestro-reviewer/lib/engine.js', async (importOriginal) => {
   const mod = await importOriginal<typeof import('@ddtcorex/maestro-reviewer/lib/engine.js')>()
