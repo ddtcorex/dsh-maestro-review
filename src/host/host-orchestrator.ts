@@ -19,7 +19,7 @@ import { reviewDigestText, type NotifierLike } from './notify.js'
 import { loadRepoSettings } from '@ddtcorex/maestro-reviewer/lib/ci-repo-settings.js'
 import { effectiveConfig } from '@ddtcorex/maestro-reviewer/lib/repo-config.js'
 import { answerCommands, commandMarker, findPendingCommands, replyToCommand } from '@ddtcorex/maestro-reviewer/lib/ci-commands.js'
-import { fetchBotUserId } from '@ddtcorex/maestro-reviewer/lib/ci-coexist.js'
+import { fetchBotUserId, latestCompletedReview } from '@ddtcorex/maestro-reviewer/lib/ci-coexist.js'
 import { timedFetcher } from '@ddtcorex/maestro-reviewer/lib/forge/gitlab/gitlab-client.js'
 import type { MrOpenedPayload } from '@ddtcorex/maestro-reviewer/lib/events.js'
 import './events.js'
@@ -299,7 +299,7 @@ export async function writeContainerVendorOverride(localRepoPath: string, worktr
 }
 
 export function apply(ctx: Context, config: Config): void {
-  async function runReview(payload: ReviewRequest): Promise<ReviewResult> {
+  async function runReview(payload: ReviewRequest, more: Partial<EngineRunOptions> = {}): Promise<ReviewResult> {
     const t0 = Date.now()
     try {
       const userConfig = await loadUserConfig()
@@ -414,7 +414,8 @@ export function apply(ctx: Context, config: Config): void {
       const repo = { rules: eff.rules, warnings, ...(eff.minSeverity !== undefined ? { minSeverity: eff.minSeverity } : {}), ...(eff.language !== undefined ? { language: eff.language } : {}) }
       return await ctx.reviewEngine.run(payload, {
         gitlab, access, reviewProfile, model, agentTimeoutMs, notify: notifyTelegram,
-        ignoreGlobs: eff.ignoreGlobs, repo, ...(file.fanout !== undefined ? { fanout: eff.fanout } : {}),
+        ignoreGlobs: eff.ignoreGlobs, repo, ...(eff.fanout !== undefined ? { fanout: eff.fanout } : {}),
+        ...more,
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -428,7 +429,31 @@ export function apply(ctx: Context, config: Config): void {
    * same access rules and answer markers as CI); a rereview runs a review
    * limited to its path. Failures are logged, never thrown.
    */
+  /** Per MR: whether a command pass is running, and whether notes arrived during it. */
+  const commandPasses = new Map<string, { again: boolean }>()
+
+  /**
+   * One command pass per MR at a time: two notes landing together would
+   * otherwise both read the same pending command and answer it twice. Notes
+   * that arrive during a pass get exactly one trailing pass.
+   */
   async function runCommands(mr: MrOpenedPayload): Promise<void> {
+    const key = `${mr.projectId}!${mr.mrIid}`
+    const running = commandPasses.get(key)
+    if (running !== undefined) { running.again = true; return }
+    const state = { again: false }
+    commandPasses.set(key, state)
+    try {
+      do {
+        state.again = false
+        await commandPass(mr)
+      } while (state.again)
+    } finally {
+      commandPasses.delete(key)
+    }
+  }
+
+  async function commandPass(mr: MrOpenedPayload): Promise<void> {
     try {
       const userConfig = await loadUserConfig()
       const token = userConfig.gitlabToken ?? config.gitlabToken
@@ -452,8 +477,18 @@ export function apply(ctx: Context, config: Config): void {
       })
       const rereview = pending.find((c) => c.command.kind === 'rereview')
       if (rereview !== undefined && rereview.command.kind === 'rereview') {
-        const path = rereview.command.path
-        const result = await runReview({ ...request, ...(path !== undefined ? { pathPrefix: path } : {}) })
+        // As in CI: a path-limited rereview needs a full review of this head to carry
+        // (its severities stay in the gate and the metadata), else the whole MR is reviewed.
+        const asked = rereview.command.path
+        const [head, prior] = asked === undefined ? [undefined, undefined] : await Promise.all([
+          gitlabForge(gitlab, request).mrHeadSha().catch(() => undefined),
+          latestCompletedReview(fetcher, { ...target, botUserId }).catch(() => undefined),
+        ])
+        const carry = head !== undefined && prior?.headSha === head ? prior.findings : undefined
+        const path = carry !== undefined ? asked : undefined
+        const result = path !== undefined && carry !== undefined
+          ? await runReview({ ...request, pathPrefix: path }, { carryFindings: carry })
+          : await runReview(request)
         const note = result.ok ? `Re-reviewed ${path === undefined ? 'the whole MR' : `\`${path}\``}; see the review comment.` : `The re-review failed: ${result.failures[0] ?? 'unknown error'}`
         await reply(rereview.discussionId, `${note}\n\n${commandMarker(rereview.noteId)}`)
       }

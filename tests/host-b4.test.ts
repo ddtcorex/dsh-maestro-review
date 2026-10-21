@@ -11,9 +11,14 @@ vi.mock('@ddtcorex/maestro-reviewer/lib/ci-commands.js', async (importOriginal) 
   const mod = await importOriginal<typeof import('@ddtcorex/maestro-reviewer/lib/ci-commands.js')>()
   return { ...mod, findPendingCommands: (...a: unknown[]) => pending(...(a as [])), answerCommands: (...a: unknown[]) => answerCommands(...(a as [])), replyToCommand: (...a: unknown[]) => replyToCommand(...(a as [])) }
 })
+const latest = vi.fn(async () => undefined as unknown)
 vi.mock('@ddtcorex/maestro-reviewer/lib/ci-coexist.js', async (importOriginal) => {
   const mod = await importOriginal<typeof import('@ddtcorex/maestro-reviewer/lib/ci-coexist.js')>()
-  return { ...mod, fetchBotUserId: vi.fn(async () => 7) }
+  return { ...mod, fetchBotUserId: vi.fn(async () => 7), latestCompletedReview: (...a: unknown[]) => latest(...(a as [])) }
+})
+vi.mock('@ddtcorex/maestro-reviewer/lib/forge/gitlab/index.js', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('@ddtcorex/maestro-reviewer/lib/forge/gitlab/index.js')>()
+  return { ...mod, gitlabForge: (...a: Parameters<typeof mod.gitlabForge>) => ({ ...mod.gitlabForge(...a), mrHeadSha: async () => 'head1' }) }
 })
 
 const note = (body: string, o: Record<string, unknown> = {}) => ({
@@ -88,12 +93,40 @@ describe('host commands', () => {
     expect(answer).toHaveBeenCalledWith(expect.objectContaining({ mrIid: 2 }), expect.objectContaining({ access: { kind: 'diff' } }), 'p')
   })
 
-  it('runs a rereview limited to its path and replies with the marker', async () => {
+  it('runs a rereview limited to its path, carrying the full review of this head, and replies with the marker', async () => {
     pending.mockResolvedValueOnce([{ noteId: 8, discussionId: 'd4', command: { kind: 'rereview', path: 'app/' } }])
+    const full = [{ code: 'X', fingerprint: 'f', severity: 'blocking' }]
+    latest.mockResolvedValueOnce({ headSha: 'head1', findings: full })
     const { provided, run } = await host()
     await provided.reviewCommandRunner({ projectId: 1, projectPath: 'group/proj', mrIid: 2, sourceBranch: 'feat/x' })
     expect((run.mock.calls[0] as any[])[0]).toMatchObject({ pathPrefix: 'app/', trigger: 'mention' })
+    expect((run.mock.calls[0] as any[])[1].carryFindings).toEqual(full)
     expect((replyToCommand.mock.calls.at(-1) as any[])[2]).toBe('d4')
     expect((replyToCommand.mock.calls.at(-1) as any[])[3]).toContain('<!-- maestro-command note=8 -->')
+  })
+})
+
+describe('host command safety', () => {
+  it('reviews the whole MR when no full review of this head exists to carry (I2)', async () => {
+    pending.mockResolvedValueOnce([{ noteId: 9, discussionId: 'd5', command: { kind: 'rereview', path: 'app/' } }])
+    latest.mockResolvedValueOnce({ headSha: 'older', findings: [] })
+    const { provided, run } = await host()
+    await provided.reviewCommandRunner({ projectId: 1, projectPath: 'group/proj', mrIid: 2, sourceBranch: 'feat/x' })
+    expect((run.mock.calls[0] as any[])[0]).not.toHaveProperty('pathPrefix')
+    expect((run.mock.calls[0] as any[])[1].carryFindings).toBeUndefined()
+  })
+
+  it('runs one command pass per MR at a time, with one trailing pass for notes that came meanwhile (I1)', async () => {
+    let active = 0
+    let peak = 0
+    let passes = 0
+    pending.mockImplementation(async () => { active++; passes++; peak = Math.max(peak, active); await new Promise((r) => setTimeout(r, 20)); active--; return [] })
+    const { provided } = await host()
+    const p = { projectId: 1, projectPath: 'group/proj', mrIid: 2, sourceBranch: 'feat/x' }
+    await Promise.all([provided.reviewCommandRunner(p), provided.reviewCommandRunner(p), provided.reviewCommandRunner(p)])
+    expect(peak).toBe(1)
+    expect(passes).toBe(2)
+    pending.mockReset()
+    pending.mockImplementation(async () => [])
   })
 })
